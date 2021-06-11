@@ -19,22 +19,26 @@ class StockMonitor:
         self.ignore_fields = [x.strip() for x in open(args.ignore_file_path, 'r').readlines()]
         self.stock_names = [x.strip() for x in open(args.stock_names_file, 'r').readlines()]
         self.output_dir = args.output_dir
-        self.screenshoter = ScreenShooter(wait_time=0)
+        self.screenshoter = ScreenShooter(wait_time=1)
         os.makedirs(os.path.join(args.output_dir, "change_logs"), exist_ok=True)
         os.makedirs(os.path.join(args.output_dir, "status_images"), exist_ok=True)
         self.cache_path = os.path.join(args.output_dir, "monitor_cache.pkl")
 
-        print(f"Taking base screen shots. this will take at least up to {self.screenshoter.wait_time*len(self.stock_names)} seconds")
-        for stock_name in tqdm(self.stock_names):
+        print(f"Taking base screen shots. this will take at least up to {self.screenshoter.wait_time*len(self.stock_names)} seconds", flush=True)
+        pbar = tqdm(self.stock_names)
+        for stock_name in pbar:
+            pbar.set_description(f"Screenshoting {stock_name}")
             self.screenhost_stock(stock_name)
         print(f"ignore fields: {self.ignore_fields}")
 
-        self.screenshoter.wait_time = 3
+        self.screenshoter.wait_time = args.screenshot_wait_time
 
-    def screenhost_stock(self, stock_name):
+    def screenhost_stock(self, stock_name, force_shot=False):
         dirname = os.path.join(self.output_dir, "status_images", stock_name)
+        if os.path.exists(dirname) and not force_shot:
+            return
         os.makedirs(dirname, exist_ok=True)
-        for tab_name in ['profile', 'overview']:
+        for tab_name in ['profile', 'overview','security']:
             last_path = os.path.join(dirname, f"{tab_name}-last.png")
             if os.path.exists(last_path):
                 before_last_path = os.path.join(dirname, f"{tab_name}-before-last.png")
@@ -47,7 +51,7 @@ class StockMonitor:
         start = time()
         current_data = {}
         for i, stock_name in enumerate(self.stock_names):
-            if i % int(0.25 * len(self.stock_names)) == 0:
+            if i % int(0.1 * len(self.stock_names)) == 0:
                 print(
                     f"\t- Progress {100 * i // len(self.stock_names):.0f}%, time elapsed {strftime('%H:%M:%S', gmtime(time() - start))}",
                     flush=True)
@@ -75,7 +79,7 @@ class StockMonitor:
                     strings_to_write.append(f"\t- {k}:\n\t\tBefore: {json.dumps(before)}\n\t\tAfter: {json.dumps(after)}\n")
 
                 # screenshot changes
-                self.screenhost_stock(stock_name)
+                self.screenhost_stock(stock_name, force_shot=True)
 
         if strings_to_write:
             print("    - ! Changes found !", flush=True)
@@ -156,32 +160,35 @@ def flatten_dict(d, parent_key='', sep='_'):
     return dict(items)
 
 
-@Gooey
+# @Gooey
 def main():
-    # parser = argparse.ArgumentParser(description='Process some integers.')
-    # args = parser.parse_args()
-    # args.stock_names_file = 'Stock_Screener.csv'
-    # args.query_freq_minutes = 10
-    # args.output_dir = 'outputs'
-    # args.ignore_file_path = 'ignore_fields.csv'
-    # args.chrome_driver = 'chromedriver.exe'
-
-    parser = GooeyParser(description='Process some integers.')
-    parser.add_argument('--chrome_driver', default='chromedriver.exe', widget='FileChooser',
-                        help='path to chrome driver that allows screen shoting the webside'
-                             'download the right version for your browser from https://chromedriver.chromium.org/downloads')
-    parser.add_argument('--stock_names_file', default='Stock_Screener.csv',
-                        help='A file with a stock name in each file', widget='FileChooser')
-    parser.add_argument('--ignore_file_path', default='ignore_fields.csv', widget='FileChooser',
-                        help='Fields to ignore while monitoring stocks')
-
-    parser.add_argument('--query_freq_minutes', default=60, widget='IntegerField', type=int,
-                        help='How much time to wait between each monitoring iteration')
-
-    parser.add_argument('--output_dir', default='outputs', widget='FileChooser',
-                        help="directory to store all this program outputs")
-
+    parser = argparse.ArgumentParser(description='Process some integers.')
     args = parser.parse_args()
+    args.stock_names_file = 'Stock_Screener.csv'
+    args.query_freq_minutes = 30
+    args.output_dir = 'outputs'
+    args.ignore_file_path = 'ignore_fields.csv'
+    args.chrome_driver = 'chromedriver.exe'
+    args.screenshot_wait_time = 3
+    # parser = GooeyParser(description='Process some integers.')
+    # parser.add_argument('--chrome_driver', default='chromedriver.exe', widget='FileChooser',
+    #                     help='path to chrome driver that allows screen shoting the webside'
+    #                          'download the right version for your browser from https://chromedriver.chromium.org/downloads')
+    # parser.add_argument('--stock_names_file', default='Stock_Screener.csv',
+    #                     help='A file with a stock name in each file', widget='FileChooser')
+    # parser.add_argument('--ignore_file_path', default='ignore_fields.csv', widget='FileChooser',
+    #                     help='Fields to ignore while monitoring stocks')
+
+    # parser.add_argument('--query_freq_minutes', default=60, widget='IntegerField', type=int,
+    #                     help='How much time to wait between each monitoring iteration')
+
+    # parser.add_argument('--screenshot_wait_time', default=3, widget='IntegerField', type=int,
+    #                     help='How much time to wait for page to load before taking a screenshot')
+
+    # parser.add_argument('--output_dir', default='outputs', widget='FileChooser',
+    #                     help="directory to store all this program outputs")
+
+    # args = parser.parse_args()
 
     monitor = StockMonitor(args)
     monitor.run()
