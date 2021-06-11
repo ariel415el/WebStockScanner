@@ -10,7 +10,7 @@ from gooey import Gooey
 from gooey import GooeyParser
 from tqdm import tqdm
 
-from screen_shoter import ScreenShoter
+from screen_shooter import ScreenShooter
 
 
 class StockMonitor:
@@ -19,19 +19,27 @@ class StockMonitor:
         self.ignore_fields = [x.strip() for x in open(args.ignore_file_path, 'r').readlines()]
         self.stock_names = [x.strip() for x in open(args.stock_names_file, 'r').readlines()]
         self.output_dir = args.output_dir
-        self.screenshoter = ScreenShoter(float(args.screenshot_crop_top), float(args.screenshot_crop_bottom), float(args.screenshot_zoom))
+        self.screenshoter = ScreenShooter(wait_time=0)
         os.makedirs(os.path.join(args.output_dir, "change_logs"), exist_ok=True)
         os.makedirs(os.path.join(args.output_dir, "status_images"), exist_ok=True)
         self.cache_path = os.path.join(args.output_dir, "monitor_cache.pkl")
 
-
-        print("Taking base screen shots")
+        print(f"Taking base screen shots. this will take at least up to {self.screenshoter.wait_time*len(self.stock_names)} seconds")
         for stock_name in tqdm(self.stock_names):
-            url = f"https://www.otcmarkets.com/stock/{stock_name}/overview"
-            last_shot_path = os.path.join(args.output_dir, "status_images", f"{stock_name}-last.jpeg")
-            if not os.path.exists(last_shot_path):
-                self.screenshoter.take_screenshot(url, last_shot_path)
+            self.screenhost_stock(stock_name)
         print(f"ignore fields: {self.ignore_fields}")
+
+        self.screenshoter.wait_time = 3
+
+    def screenhost_stock(self, stock_name):
+        dirname = os.path.join(self.output_dir, "status_images", stock_name)
+        os.makedirs(dirname, exist_ok=True)
+        for tab_name in ['profile', 'overview']:
+            last_path = os.path.join(dirname, f"{tab_name}-last.png")
+            if os.path.exists(last_path):
+                before_last_path = os.path.join(dirname, f"{tab_name}-before-last.png")
+                os.rename(last_path, before_last_path)
+            self.screenshoter.take_full_screen_screenshot(f"https://www.otcmarkets.com/stock/{stock_name}/{tab_name}", last_path)
 
     def collect_data(self):
         print("#############################################")
@@ -67,12 +75,7 @@ class StockMonitor:
                     strings_to_write.append(f"\t- {k}:\n\t\tBefore: {json.dumps(before)}\n\t\tAfter: {json.dumps(after)}\n")
 
                 # screenshot changes
-                last_shot_path = os.path.join(self.output_dir, "status_images", f"{stock_name}-last.jpeg")
-                before_last_shot_path = os.path.join(self.output_dir, "status_images", f"{stock_name}_before-last.jpeg")
-                if os.path.exists(last_shot_path):
-                    os.rename(last_shot_path, before_last_shot_path)
-                    url = f"https://www.otcmarkets.com/stock/{stock_name}/overview"
-                    self.screenshoter.take_screenshot(url, last_shot_path)
+                self.screenhost_stock(stock_name)
 
         if strings_to_write:
             print("    - ! Changes found !", flush=True)
@@ -162,9 +165,6 @@ def main():
     # args.output_dir = 'outputs'
     # args.ignore_file_path = 'ignore_fields.csv'
     # args.chrome_driver = 'chromedriver.exe'
-    # args.screenshot_crop_top = 0.55
-    # args.screenshot_crop_bottom = 0.15
-    # args.screenshot_zoom = 1.0
 
     parser = GooeyParser(description='Process some integers.')
     parser.add_argument('--chrome_driver', default='chromedriver.exe', widget='FileChooser',
@@ -178,12 +178,6 @@ def main():
     parser.add_argument('--query_freq_minutes', default=60, widget='IntegerField', type=int,
                         help='How much time to wait between each monitoring iteration')
 
-    parser.add_argument('-screenshot_crop_top', widget='DecimalField', gooey_options={'min': 0., 'max': 1., 'increment': 0.05, 'precision': 0.01},
-                        default=0.15, help='% of crop from the top of the screenshot')
-    parser.add_argument('-screenshot_crop_bottom', widget='DecimalField', gooey_options={'min': 0., 'max': 1., 'increment': 0.05, 'precision': 0.01},
-                        default=0.55, help='% of crop from the bottom of the screenshot')
-    parser.add_argument('-screenshot_zoom', widget='DecimalField', gooey_options={'min': 0., 'max': 1., 'increment': 0.05, 'precision': 0.01},
-                        default=0.75, help='how much to zoom in/out before taking a screenshot')
     parser.add_argument('--output_dir', default='outputs', widget='FileChooser',
                         help="directory to store all this program outputs")
 
