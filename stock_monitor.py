@@ -2,12 +2,10 @@ import pickle
 import urllib.request
 import json
 import os
-from time import time, sleep, strftime, gmtime
+from time import sleep
 import datetime
+from shutil import move
 
-import argparse
-from gooey import Gooey
-from gooey import GooeyParser
 from tqdm import tqdm
 
 from screen_shooter import ScreenShooter
@@ -24,175 +22,97 @@ class StockMonitor:
         os.makedirs(os.path.join(args.output_dir, "status_images"), exist_ok=True)
         self.cache_path = os.path.join(args.output_dir, "monitor_cache.pkl")
 
-        print(f"Taking base screen shots. this will take at least up to {self.screenshoter.wait_time*len(self.stock_names)} seconds", flush=True)
-        pbar = tqdm(self.stock_names)
-        for stock_name in pbar:
-            pbar.set_description(f"Screenshoting {stock_name}")
-            self.screenhost_stock(stock_name)
-        print(f"ignore fields: {self.ignore_fields}")
-
         self.screenshoter.wait_time = args.screenshot_wait_time
 
+        if os.path.exists(self.cache_path):
+            self.last_data_entry = pickle.load(open(self.cache_path, 'rb'))
+        else:
+            self.last_data_entry = None
+
     def screenhost_stock(self, stock_name, force_shot=False):
+        """Take a screen shot from the three tabs of this stock page"""
         dirname = os.path.join(self.output_dir, "status_images", stock_name)
         if os.path.exists(dirname) and not force_shot:
             return
         os.makedirs(dirname, exist_ok=True)
-        for tab_name in ['profile', 'overview','security']:
+        for tab_name in ['profile', 'overview', 'security']:
             last_path = os.path.join(dirname, f"{tab_name}-last.png")
             if os.path.exists(last_path):
                 before_last_path = os.path.join(dirname, f"{tab_name}-before-last.png")
-                os.rename(last_path, before_last_path)
-            self.screenshoter.take_full_screen_screenshot(f"https://www.otcmarkets.com/stock/{stock_name}/{tab_name}", last_path)
+                move(last_path, before_last_path)
+            self.screenshoter.take_full_screen_screenshot(f"https://www.otcmarkets.com/stock/{stock_name}/{tab_name}",
+                                                          last_path)
 
-    def collect_data(self):
-        print("#############################################")
-        print(f"Monitoring {len(self.stock_names)} stocks...", flush=True)
-        start = time()
-        current_data = {}
-        for i, stock_name in enumerate(self.stock_names):
-            if i % int(0.1 * len(self.stock_names)) == 0:
-                print(
-                    f"\t- Progress {100 * i // len(self.stock_names):.0f}%, time elapsed {strftime('%H:%M:%S', gmtime(time() - start))}",
-                    flush=True)
-            try:
-                company_dict = get_raw_stock_data(stock_name)
-                current_data[stock_name] = flatten_dict(company_dict)
-            except Exception as e:
-                print(f"\t  ! Error while reading data from '{stock_name}'.. skipping !")
-        print(f"    - Data collected in {strftime('%H:%M:%S', gmtime(time() - start))}", flush=True)
+    def collect_stock_data(self, stock_name):
+        """Returns a current data dicctionary for each stock loaded from the website servers"""
+        try:
+            data = StockMonitor.get_raw_stock_data(stock_name)
+            data = StockMonitor.flatten_dict(data)
+            data = {k: v for k, v in data.items() if k not in self.ignore_fields}
+            return data
+        except Exception as e:
+            return None
 
-        # filter out ignore fields data
-        current_data = {k: v for k, v in current_data.items() if k not in self.ignore_fields}
+    def verify_initial_screenshots(self):
+        for stock_name in self.stock_names:
+            self.screenhost_stock(stock_name)
 
-        return current_data
-
-    def _analyze_changes(self, changes):
-        """"""
-        time_str = str(datetime.datetime.now()).replace(" ", "_").replace(":", '-').split(".")[0]
-        strings_to_write = []
+    def record_changes(self, changes):
+        """Record changes in log files and screenshot sites"""
+        lines_to_write = []
         for stock_name in changes:
-            if stock_name in changes and changes[stock_name]:
+            if changes[stock_name]:
                 # prepare log lines
-                strings_to_write.append(f"Stock: {stock_name}:\n")
+                lines_to_write.append(f"Stock: {stock_name}:\n")
                 for k, (before, after) in changes[stock_name].items():
-                    strings_to_write.append(f"\t- {k}:\n\t\tBefore: {json.dumps(before)}\n\t\tAfter: {json.dumps(after)}\n")
+                    lines_to_write.append(
+                        f"\t- {k}:\n\t\tBefore: {json.dumps(before)}\n\t\tAfter: {json.dumps(after)}\n")
 
                 # screenshot changes
                 self.screenhost_stock(stock_name, force_shot=True)
 
-        if strings_to_write:
-            print("    - ! Changes found !", flush=True)
-            f = open(os.path.join(self.output_dir, 'change_logs', f"{time_str}.log"), 'w')
-            for string in strings_to_write:
-                f.write(string)
-            f.close()
-        else:
-            print("    - No changes found ...", flush=True)
+        if lines_to_write:
+            time_str = str(datetime.datetime.now()).replace(" ", "_").replace(":", '-').split(".")[0]
+            log_file = open(os.path.join(self.output_dir, 'change_logs', f"{time_str}.log"), 'w')
+            for line in lines_to_write:
+                log_file.write(line)
 
-    def run(self):
-        if os.path.exists(self.cache_path):
-            last_data_entry = pickle.load(open(self.cache_path, 'rb'))
-        else:
-            last_data_entry = None
+    def save_last_data_to_file(self):
+        pickle.dump(self.last_data_entry, open(self.cache_path, 'wb'))
 
-        while True:
-            current_data = self.collect_data()
+    @staticmethod
+    def get_dict_from_url(url):
+        req = urllib.request.Request(url)
+        page = urllib.request.urlopen(req)
+        d = json.loads(page.read().decode('utf-8'))
+        return d
 
-            if last_data_entry is not None:
-                changes = compare_data_dicts(last_data_entry, current_data)
-                self._analyze_changes(changes)
+    @staticmethod
+    def get_raw_stock_data(stock_name):
+        # url = f"https://backend.otcmarkets.com/otcapi/stock/trade/inside/{stock_name}?symbol={stock_name}"
+        url = f"https://backend.otcmarkets.com/otcapi/company/profile/full/{stock_name}?symbol={stock_name}"
+        company_dict = StockMonitor.get_dict_from_url(url)
 
-            # last_data_entry.update(current_data)
-            last_data_entry = current_data
+        return company_dict
 
-            pickle.dump(current_data, open(self.cache_path, 'wb'))
-
-            print(f"    - Sleeping for {self.query_freq_minutes} minutes", flush=True)
-            sleep(60 * self.query_freq_minutes)
-
-
-def get_dict_from_url(url):
-    req = urllib.request.Request(url)
-    page = urllib.request.urlopen(req)
-    d = json.loads(page.read().decode('utf-8'))
-    return d
-
-
-def get_raw_stock_data(stock_name):
-    # start = time()
-    # url = f"https://backend.otcmarkets.com/otcapi/stock/trade/inside/{stock_name}?symbol={stock_name}"
-    # price_dict = get_dict_from_url(url)
-    # print(f"prices query took {time() - start} seconds")
-
-    # start = time()
-    url = f"https://backend.otcmarkets.com/otcapi/company/profile/full/{stock_name}?symbol={stock_name}"
-    company_dict = get_dict_from_url(url)
-    # print(f"company query took {time() - start} seconds")
-
-    return company_dict
-
-
-def compare_data_dicts(last_data, current_data):
-    changes = {}
-
-    for stock_name, data in current_data.items():
+    @staticmethod
+    def compare_data_dicts(last_data, current_data):
         stock_changes = {}
-        for k, v in data.items():
-            if stock_name in last_data and k in last_data[stock_name]:
-                if last_data[stock_name][k] != v:
-                    stock_changes[k] = (last_data[stock_name][k], v)
-        changes[stock_name] = stock_changes
-    return changes
+        if last_data and current_data:
+            for k, v in last_data.items():
+                if k in current_data and current_data[k] != v:
+                    stock_changes[k] = (v, current_data[k])
+        return stock_changes
 
-
-def flatten_dict(d, parent_key='', sep='_'):
-    import collections
-    items = []
-    for k, v in d.items():
-        if type(v) == list:
-            v = {str(i): v[i] for i in range(len(v))}
-        new_key = parent_key + sep + k if parent_key else k
-        if type(v) == dict:
-            items.extend(flatten_dict(v, new_key, sep=sep).items())
-        else:
-            items.append((new_key, v))
-    return dict(items)
-
-
-# @Gooey
-def main():
-    parser = argparse.ArgumentParser(description='Process some integers.')
-    args = parser.parse_args()
-    args.stock_names_file = 'Stock_Screener.csv'
-    args.query_freq_minutes = 30
-    args.output_dir = 'outputs'
-    args.ignore_file_path = 'ignore_fields.csv'
-    args.chrome_driver = 'chromedriver.exe'
-    args.screenshot_wait_time = 3
-    # parser = GooeyParser(description='Process some integers.')
-    # parser.add_argument('--chrome_driver', default='chromedriver.exe', widget='FileChooser',
-    #                     help='path to chrome driver that allows screen shoting the webside'
-    #                          'download the right version for your browser from https://chromedriver.chromium.org/downloads')
-    # parser.add_argument('--stock_names_file', default='Stock_Screener.csv',
-    #                     help='A file with a stock name in each file', widget='FileChooser')
-    # parser.add_argument('--ignore_file_path', default='ignore_fields.csv', widget='FileChooser',
-    #                     help='Fields to ignore while monitoring stocks')
-
-    # parser.add_argument('--query_freq_minutes', default=60, widget='IntegerField', type=int,
-    #                     help='How much time to wait between each monitoring iteration')
-
-    # parser.add_argument('--screenshot_wait_time', default=3, widget='IntegerField', type=int,
-    #                     help='How much time to wait for page to load before taking a screenshot')
-
-    # parser.add_argument('--output_dir', default='outputs', widget='FileChooser',
-    #                     help="directory to store all this program outputs")
-
-    # args = parser.parse_args()
-
-    monitor = StockMonitor(args)
-    monitor.run()
-
-
-if __name__ == '__main__':
-    main()
+    @staticmethod
+    def flatten_dict(d, parent_key='', sep='_'):
+        items = []
+        for k, v in d.items():
+            if type(v) == list:
+                v = {str(i): v[i] for i in range(len(v))}
+            new_key = parent_key + sep + k if parent_key else k
+            if type(v) == dict:
+                items.extend(StockMonitor.flatten_dict(v, new_key, sep=sep).items())
+            else:
+                items.append((new_key, v))
+        return dict(items)
