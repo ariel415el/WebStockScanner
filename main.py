@@ -50,4 +50,6 @@ def main():
     manage_monitor(monitor)
 
 if __name__ == '__main__':
+    import multiprocessing
+    multiprocessing.freeze_support()
     main()

@@ -8,6 +8,7 @@ import utils
 import os
 
 from utils import get_img_data
+# sg.theme_previewer()
 
 
 def t_print(x, end=None):
@@ -28,7 +29,7 @@ def drive_single_pass(monitor):
             monitor.write_csv(current_data[stock_name], stock_name)
 
             stock_changes = utils.compare_data_dicts(monitor.last_data_entry[stock_name],
-                                                             current_data[stock_name])
+                                                     current_data[stock_name])
             if stock_changes:
                 monitor.write_changes(stock_changes, stock_name)
                 monitor.screenshost_stock(stock_name, force_shot=True)
@@ -81,15 +82,19 @@ def verify_initial_screenshots(monitor):
 
 
 def get_run_layout(stock_names):
-    s = 15
-    layout = [[sg.Text('Stock monitor log')],
+    s = 10
+    default_img_path = os.path.join('icons', 'no-img.png')
+    layout = [[sg.Image(filename=os.path.join('icons', 'OTC.png'))],
                [sg.Output(size=(70, s)),
                 sg.Listbox(values=sorted(list(stock_names)), select_mode=sg.LISTBOX_SELECT_MODE_SINGLE,
                            enable_events=True, size=(10,s), key='-LISTBOX-', default_values=stock_names[0]),
-                sg.Frame("Stock graph:", [[sg.Image(key='status_image_0')]], key='Frame_0')
+                sg.Frame("Stock graph:", [[sg.Image(key='status_image_0', filename=default_img_path)]], key='Frame_0')
+                # sg.Column([[sg.Image(key='status_image_0', filename=p)]], key='Frame_0', scrollable=True, size=(200,200))
                 ],
-               [sg.Frame('Before-last image',[[ sg.Image(key='status_image_1')]], key='Frame_1')],
-               [sg.Frame('Last image', [[sg.Image(key='status_image_2')]], key='Frame_2')],
+               [sg.Frame('Before-last image',[[ sg.Image(key='status_image_1', filename=default_img_path)]], key='Frame_1')],
+               # [sg.Column([[sg.Image(key='status_image_1', filename=p)]], key='Frame_1', scrollable=True, size=(500,100))],
+               [sg.Frame('Last image', [[sg.Image(key='status_image_2', filename=default_img_path)]], key='Frame_2')],
+               # [sg.Column([[sg.Image(key='status_image_2', filename=p)]], key='Frame_2', scrollable=True, size=(500,100))],
                [sg.Text(f"Next run in N/A", key='time_to_next_run', size=(15, 1)),
                 sg.Drop([0, 1, 5, 10, 30, 60], key='wait_time', default_value=30)],
                [sg.Text('Progress:'), sg.ProgressBar(len(stock_names), size=(20, 20), orientation='h', key='PROGRESS_BAR'),
@@ -104,13 +109,13 @@ def manage_monitor(monitor):
     global thread_messages
     thread_messages = {'progress': 0, 'progress_txt': '', 'msg': ''}
     timer = time()
-    sg.theme('Light Brown 3')
+    sg.theme('Dark Gray 13')
 
     # --------------------- Read arguments ---------------------
     # --------------------- Run ---------------------
     layout = get_run_layout(monitor.stock_names)
 
-    window = sg.Window('Multithreaded Window', layout)
+    window = sg.Window('Multithreaded Window', layout, finalize=True)
     window.read(timeout=1)
 
     # --------------------- INIT LOOP ---------------------
@@ -174,13 +179,14 @@ def manage_monitor(monitor):
 
 def try_load_images(monitor, window, stock_name):
     image_paths = [
-        ('Stock-graph', os.path.join(monitor.output_dir, "graphs", stock_name, 'data.png'), None, (250, 250)),
-        ('before-last image', os.path.join(monitor.output_dir, "status_images", stock_name, 'overview-before-last.png'), (0, 275, 1050, 600), (800, 200)),
-        ('Last image', os.path.join(monitor.output_dir, "status_images", stock_name, 'overview-last.png'), (0, 275, 1050, 600), (800, 200)),
+        ('Stock-graph', os.path.join(monitor.output_dir, "graphs", stock_name, 'data.png'), None, (150, 150)),
+        ('before-last image', os.path.join(monitor.output_dir, "status_images", stock_name, 'overview-before-last.png'), (0, 275, 1050, 600), (500, 150)),
+        ('Last image', os.path.join(monitor.output_dir, "status_images", stock_name, 'overview-last.png'), (0, 275, 1050, 600), (500, 150)),
     ]
 
     for i, (name, img_path, crop, maxsize) in enumerate(image_paths):
         if os.path.exists(img_path):
+            # window.Element(f"status_image_{i}").Update(filename=img_path)
             img_data = get_img_data(img_path, first=True, crop=crop, maxsize=maxsize)
             window.Element(f"status_image_{i}").Update(data=img_data)
             date_str = str(datetime.datetime.fromtimestamp(os.path.getmtime(img_path))).split('.')[0]
