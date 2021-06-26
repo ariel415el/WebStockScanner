@@ -1,21 +1,19 @@
 import pickle
-import urllib.request
 import json
 import os
-from time import sleep
 import datetime
 from shutil import move
 
-from tqdm import tqdm
-
 from screen_shooter import ScreenShooter
+import utils
 
 
 class StockMonitor:
     def __init__(self, args):
         self.query_freq_minutes = args.query_freq_minutes
-        self.ignore_fields = [x.strip() for x in open(args.ignore_file_path, 'r').readlines()]
-        self.stock_names = [x.strip() for x in open(args.stock_names_file, 'r').readlines()]
+        self.ignore_fields = [x.strip() for x in open(args.ignore_fields_path, 'r').readlines()]
+        self.plot_fields = [x.strip() for x in open(args.plot_fields_path, 'r').readlines()]
+        self.stock_names = [x.strip() for x in open(args.stock_names_path, 'r').readlines()]
         self.output_dir = args.output_dir
         self.screenshoter = ScreenShooter(wait_time=1)
         os.makedirs(os.path.join(args.output_dir, "change_logs"), exist_ok=True)
@@ -29,25 +27,26 @@ class StockMonitor:
         else:
             self.last_data_entry = None
 
-    def screenhost_stock(self, stock_name, force_shot=False):
+    def screenshost_stock(self, stock_name, force_shot=False):
         """Take a screen shot from the three tabs of this stock page"""
         dirname = os.path.join(self.output_dir, "status_images", stock_name)
         if os.path.exists(dirname) and not force_shot:
-            return
+            return 0
         os.makedirs(dirname, exist_ok=True)
+        ret_val = 0
         for tab_name in ['profile', 'overview', 'security']:
             last_path = os.path.join(dirname, f"{tab_name}-last.png")
             if os.path.exists(last_path):
                 before_last_path = os.path.join(dirname, f"{tab_name}-before-last.png")
                 move(last_path, before_last_path)
-            self.screenshoter.take_full_screen_screenshot(f"https://www.otcmarkets.com/stock/{stock_name}/{tab_name}",
-                                                          last_path)
+            ret_val += self.screenshoter.take_full_screen_screenshot(f"https://www.otcmarkets.com/stock/{stock_name}/{tab_name}",last_path)
+        return ret_val
 
     def collect_stock_data(self, stock_name):
         """Returns a current data dicctionary for each stock loaded from the website servers"""
         try:
-            data = StockMonitor.get_raw_stock_data(stock_name)
-            data = StockMonitor.flatten_dict(data)
+            data = utils.get_raw_stock_data(stock_name)
+            data = utils.flatten_dict(data)
             data = {k: v for k, v in data.items() if k not in self.ignore_fields}
             return data
         except Exception as e:
@@ -55,64 +54,33 @@ class StockMonitor:
 
     def verify_initial_screenshots(self):
         for stock_name in self.stock_names:
-            self.screenhost_stock(stock_name)
+            self.screenshost_stock(stock_name)
 
-    def record_changes(self, changes):
-        """Record changes in log files and screenshot sites"""
-        lines_to_write = []
-        for stock_name in changes:
-            if changes[stock_name]:
-                # prepare log lines
-                lines_to_write.append(f"Stock: {stock_name}:\n")
-                for k, (before, after) in changes[stock_name].items():
-                    lines_to_write.append(
-                        f"\t- {k}:\n\t\tBefore: {json.dumps(before)}\n\t\tAfter: {json.dumps(after)}\n")
-
-                # screenshot changes
-                self.screenhost_stock(stock_name, force_shot=True)
-
-        if lines_to_write:
+    def write_changes(self, stock_changes, stock_name):
+        """Dumpy changes to log file"""
+        if stock_changes:
             time_str = str(datetime.datetime.now()).replace(" ", "_").replace(":", '-').split(".")[0]
-            log_file = open(os.path.join(self.output_dir, 'change_logs', f"{time_str}.log"), 'w')
-            for line in lines_to_write:
-                log_file.write(line)
+
+            os.makedirs(os.path.join(self.output_dir, 'change_logs', stock_name), exist_ok=True)
+            log_file = open(os.path.join(self.output_dir, 'change_logs', stock_name, f"{time_str}-changes.log"), 'w')
+
+            # prepare log lines
+            log_file.write(f"Stock: {stock_name}:\n")
+            for k, (before, after) in stock_changes.items():
+                log_file.write(f"\t- {k}:\n\t\tBefore: {json.dumps(before)}\n\t\tAfter: {json.dumps(after)}\n")
+
+            log_file.close()
+
+    def write_csv(self, stock_data, stock_name):
+        """Add an entry of current data of the plot fields and update the plot"""
+        if stock_data:
+            time_str = str(datetime.datetime.now()).replace(" ", "_").replace(":", '-').split(".")[0]
+
+            output_dir = os.path.join(self.output_dir, 'graphs', stock_name)
+            os.makedirs(output_dir, exist_ok=True)
+            utils.save_data_csv(stock_data, self.plot_fields, time_str, output_dir)
+            utils.plot_csv_process(output_dir)
 
     def save_last_data_to_file(self):
         pickle.dump(self.last_data_entry, open(self.cache_path, 'wb'))
 
-    @staticmethod
-    def get_dict_from_url(url):
-        req = urllib.request.Request(url)
-        page = urllib.request.urlopen(req)
-        d = json.loads(page.read().decode('utf-8'))
-        return d
-
-    @staticmethod
-    def get_raw_stock_data(stock_name):
-        # url = f"https://backend.otcmarkets.com/otcapi/stock/trade/inside/{stock_name}?symbol={stock_name}"
-        url = f"https://backend.otcmarkets.com/otcapi/company/profile/full/{stock_name}?symbol={stock_name}"
-        company_dict = StockMonitor.get_dict_from_url(url)
-
-        return company_dict
-
-    @staticmethod
-    def compare_data_dicts(last_data, current_data):
-        stock_changes = {}
-        if last_data and current_data:
-            for k, v in last_data.items():
-                if k in current_data and current_data[k] != v:
-                    stock_changes[k] = (v, current_data[k])
-        return stock_changes
-
-    @staticmethod
-    def flatten_dict(d, parent_key='', sep='_'):
-        items = []
-        for k, v in d.items():
-            if type(v) == list:
-                v = {str(i): v[i] for i in range(len(v))}
-            new_key = parent_key + sep + k if parent_key else k
-            if type(v) == dict:
-                items.extend(StockMonitor.flatten_dict(v, new_key, sep=sep).items())
-            else:
-                items.append((new_key, v))
-        return dict(items)

@@ -15,7 +15,6 @@ class ScreenShooter:
             self.driver.get(url)
         except Exception as e:
             return -1
-        # sleep(self.wait_time)
 
         S = lambda X: self.driver.execute_script('return document.body.parentNode.scroll' + X)
         self.driver.set_window_size(S('Width'), S('Height'))  # May need manual adjustment

@@ -4,6 +4,7 @@ from time import sleep
 from tqdm import tqdm
 
 from gui import manage_monitor
+import utils
 from stock_monitor import StockMonitor
 
 
@@ -18,7 +19,7 @@ def drive_monitor_on_cmd(monitor):
             pbar.set_description(f"{stock_name} Collecting data")
             current_data[stock_name] = monitor.collect_stock_data(stock_name)
             if monitor.last_data_entry is not None:
-                changes[stock_name] = StockMonitor.compare_data_dicts(monitor.last_data_entry[stock_name],
+                changes[stock_name] = utils.compare_data_dicts(monitor.last_data_entry[stock_name],
                                                                       current_data[stock_name])
         pbar.set_description(f"Comparing data to last entry")
         monitor.last_data_entry = current_data
@@ -35,10 +36,11 @@ def drive_monitor_on_cmd(monitor):
 def main():
     parser = argparse.ArgumentParser(description='Process some integers.')
     args = parser.parse_args()
-    args.stock_names_file = 'Stock_Screener.csv'
     args.query_freq_minutes = 15
     args.output_dir = 'outputs'
-    args.ignore_file_path = 'ignore_fields.csv'
+    args.stock_names_path = 'stock_names.csv'
+    args.ignore_fields_path = 'ignore_fields.csv'
+    args.plot_fields_path = 'plot_fields.csv'
     args.chrome_driver = 'chromedriver.exe'
     args.screenshot_wait_time = 3
 
