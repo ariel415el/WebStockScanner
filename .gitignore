@@ -1,0 +1,8 @@
+chromedriver.exe
+*.csv
+*pycache*
+.idea
+/build
+/dist
+multithredads
+stock_monitor.spec
