@@ -1,0 +1,7 @@
+psutil==5.8.0
+tqdm==4.60.0
+selenium==3.141.0
+matplotlib==3.4.2
+pandas==1.2.4
+Pillow==8.3.0
+PySimpleGUI==4.45.0
