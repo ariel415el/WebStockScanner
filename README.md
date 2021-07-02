@@ -1,7 +1,7 @@
 # WebStockScanner
 Scan and monitor OCTMarket website for changes in stocks info
 
-![text](readme_assets/programm-looks.PNG)
+<img align="right" width="600" height="540" src="readme_assets/programm-looks.PNG">
 
 # Python requiremtns
 - psutil==5.8.0
