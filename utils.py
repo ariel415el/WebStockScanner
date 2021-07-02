@@ -1,6 +1,7 @@
 import json
 import os
 import urllib.request
+from datetime import datetime
 
 from multiprocessing import Process
 
@@ -106,3 +107,12 @@ def get_img_data(f, maxsize=(200, 200), first=False, crop=None):
         del img
         return bio.getvalue()
     return ImageTk.PhotoImage(img)
+
+
+def get_time_str(for_filename=True):
+    t = datetime.now()
+    if for_filename:
+        time_str = str(t).replace(" ", "_").replace(":", '-').split(".")[0]
+    else:
+        time_str = str(t).replace(" ", "-").split(".")[0]
+    return time_str

@@ -1,4 +1,3 @@
-#!/usr/bin/python3
 import time
 import PySimpleGUI as sg
 from time import time
@@ -6,6 +5,7 @@ import threading
 import datetime
 import utils
 import os
+from pathlib import Path
 
 from utils import get_img_data
 # sg.theme_previewer()
@@ -14,6 +14,18 @@ from utils import get_img_data
 def t_print(x, end=None):
     time_str = str(datetime.datetime.now()).split(".")[0]
     print(f"{time_str}: {x}", end=end)
+
+def verify_initial_data(monitor):
+    global thread_messages
+    for i, stock_name in enumerate(monitor.stock_names):
+        stock_dir_path = os.path.join(monitor.output_dir, stock_name)
+        if not os.path.exists(stock_dir_path):
+            os.makedirs(stock_dir_path, exist_ok=True)
+            stock_data = monitor.collect_stock_data(stock_name)
+            monitor.save_current_data(stock_name, stock_data)
+            monitor.screenshost_stock(stock_name)
+        thread_messages['progress'] = i
+        thread_messages['progress_txt'] = f"{stock_name}"
 
 
 def drive_single_pass(monitor):
@@ -31,7 +43,7 @@ def drive_single_pass(monitor):
                 monitor.write_plot_fields_data(stock_name, stock_data)
 
                 monitor.write_changes(stock_name, stock_changes)
-                monitor.screenshost_stock(stock_name, force_shot=True)
+                monitor.screenshost_stock(stock_name)
                 num_changes += 1
 
         monitor.save_current_data(stock_name, stock_data)
@@ -41,13 +53,6 @@ def drive_single_pass(monitor):
     thread_messages['progress_txt'] = ''
     thread_messages['msg'] = f"Found changes in {num_changes} stocks"
 
-
-def verify_initial_screenshots(monitor):
-    global thread_messages
-    for i, stock_name in enumerate(monitor.stock_names):
-        ret_val = monitor.screenshost_stock(stock_name)
-        thread_messages['progress'] = i
-        thread_messages['progress_txt'] = f"{stock_name}: {'OK' if ret_val == 0  else str(-1*ret_val) + ' errors'}"
 
 # def read_arguments_layout(time_left, n):
 #     layout = [[sg.Text('Machine Learning Command Line Parameters', font=('Helvetica', 16))],
@@ -117,7 +122,7 @@ def manage_monitor(monitor):
 
     # --------------------- INIT LOOP ---------------------
     t_print(f"Initializing monitor: verigying images for {len(monitor.stock_names)} stocks...", end='')
-    thread = threading.Thread(target=verify_initial_screenshots, args=(monitor,), daemon=True)
+    thread = threading.Thread(target=verify_initial_data, args=(monitor,), daemon=True)
     thread.start()
     while thread:
         event, _ = window.read(timeout=1)
@@ -177,14 +182,22 @@ def manage_monitor(monitor):
 
 
 def try_load_images(monitor, window, stock_name):
+    overview_images_dir = os.path.join(monitor.output_dir, stock_name, "status_images", 'overview')
+    img_paths = sorted(Path(overview_images_dir).iterdir(), key=os.path.getmtime)
+    before_last_img_path = last_img_path = None
+    if len(img_paths) >= 1:
+        last_img_path = img_paths[-1]
+    if len(img_paths) > 1:
+        before_last_img_path = img_paths[-2]
+
     image_paths = [
         ('Stock-graph', os.path.join(monitor.output_dir, stock_name, 'special_fields.png'), None, (150, 150)),
-        ('before-last image', os.path.join(monitor.output_dir, stock_name, "status_images", 'overview-before-last.png'), (0, 275, 1050, 600), (500, 150)),
-        ('Last image', os.path.join(monitor.output_dir, stock_name, "status_images", 'overview-last.png'), (0, 275, 1050, 600), (500, 150)),
+        ('before-last image', before_last_img_path, (0, 275, 1050, 600), (500, 150)),
+        ('Last image', last_img_path, (0, 275, 1050, 600), (500, 150)),
     ]
 
     for i, (name, img_path, crop, maxsize) in enumerate(image_paths):
-        if os.path.exists(img_path):
+        if img_path and os.path.exists(img_path):
             # window.Element(f"status_image_{i}").Update(filename=img_path)
             img_data = get_img_data(img_path, first=True, crop=crop, maxsize=maxsize)
             window.Element(f"status_image_{i}").Update(data=img_data)

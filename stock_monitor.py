@@ -1,8 +1,7 @@
 import pickle
 import json
 import os
-import datetime
-from shutil import move
+from pathlib import Path
 
 from screen_shooter import ScreenShooter
 import utils
@@ -17,7 +16,7 @@ class StockMonitor:
         self.screenshoter = ScreenShooter(wait_time=1)
         self.output_dir = args.output_dir
         self.screenshoter.wait_time = args.screenshot_wait_time
-
+        self.max_status_images = 10
         self.load_cached_data()
 
     def load_cached_data(self):
@@ -39,20 +38,21 @@ class StockMonitor:
         # pd.DataFrame.from_dict({k: [v] for k, v in stock_data.items()}).to_csv(csv_path, mode='a',
         #                                                                header=not os.path.exists(csv_path))
 
-    def screenshost_stock(self, stock_name, force_shot=False):
+    def screenshost_stock(self, stock_name):
         """Take a screen shot from the three tabs of this stock page"""
-        dirname = os.path.join(self.output_dir, stock_name, "status_images")
-        if os.path.exists(dirname) and not force_shot:
-            return 0
-        os.makedirs(dirname, exist_ok=True)
+
         ret_val = 0
         for tab_name in ['profile', 'overview', 'security']:
-            last_path = os.path.join(dirname, f"{tab_name}-last.png")
-            if os.path.exists(last_path):
-                before_last_path = os.path.join(dirname, f"{tab_name}-before-last.png")
-                move(last_path, before_last_path)
-            ret_val += self.screenshoter.take_full_screen_screenshot(
-                f"https://www.otcmarkets.com/stock/{stock_name}/{tab_name}", last_path)
+            dirpath = os.path.join(self.output_dir, stock_name, "status_images", tab_name)
+            os.makedirs(dirpath, exist_ok=True)
+            time_str = utils.get_time_str(for_filename=True)
+            new_file_path = os.path.join(dirpath, f"{time_str}.png")
+            ret_val += self.screenshoter.take_full_screen_screenshot(f"https://www.otcmarkets.com/stock/{stock_name}/{tab_name}", new_file_path)
+
+            if len(os.listdir(dirpath)) > self.max_status_images:
+                oldest_path = min(Path(dirpath).iterdir(), key=os.path.getmtime)
+                os.remove(oldest_path)
+
         return ret_val
 
     def collect_stock_data(self, stock_name):
@@ -66,7 +66,6 @@ class StockMonitor:
             return None
 
         # manager_names = ['Kevin Booker', 'Kevin durant', 'Micheal Jordan', 'Kobi Bryant', 'Chris Paul', 'R Donoven JR']
-        # import numpy as np
         # import random
         # if random.random() > 0.2:
         #     data = {"securities_0_authorizedShares": random.choice([1,2,3,4]),
@@ -75,12 +74,12 @@ class StockMonitor:
         #             "securities_0_unrestrictedShares": random.choice([555,666,777,888])}
         # else:
         #     data = None
-        return data
+        # return data
 
     def write_changes(self, stock_name, stock_changes):
         """Dumpy changes to log file"""
         if stock_changes:
-            time_str = str(datetime.datetime.now()).replace(" ", "_").replace(":", '-').split(".")[0]
+            time_str = utils.get_time_str(for_filename=True)
 
             logs_path = os.path.join(self.output_dir, stock_name, 'change_logs')
             os.makedirs(logs_path, exist_ok=True)
@@ -97,7 +96,7 @@ class StockMonitor:
     def write_plot_fields_data(self, stock_name, stock_data):
         """Add an entry of current data of the plot fields and update the plot"""
         if stock_data:
-            time_str = str(datetime.datetime.now()).replace(" ", "-").split(".")[0]
+            time_str = utils.get_time_str(for_filename=False)
 
             output_dir = os.path.join(self.output_dir, stock_name)
             os.makedirs(output_dir, exist_ok=True)
