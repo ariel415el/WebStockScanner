@@ -15,34 +15,31 @@ def t_print(x, end=None):
     time_str = str(datetime.datetime.now()).split(".")[0]
     print(f"{time_str}: {x}", end=end)
 
+
 def drive_single_pass(monitor):
     global thread_messages
 
     num_changes = 0
-    current_data = {}
     t_print("Collecting data")
     for i, stock_name in enumerate(monitor.stock_names):
-        current_data[stock_name] = monitor.collect_stock_data(stock_name)
-
-        if monitor.last_data_entry is not None:
-
-            monitor.write_csv(current_data[stock_name], stock_name)
+        stock_data = monitor.collect_stock_data(stock_name)
+        if monitor.last_data_entry[stock_name] is not None:
 
             stock_changes = utils.compare_data_dicts(monitor.last_data_entry[stock_name],
-                                                     current_data[stock_name])
+                                                     stock_data)
             if stock_changes:
-                monitor.write_changes(stock_changes, stock_name)
+                monitor.write_plot_fields_data(stock_name, stock_data)
+
+                monitor.write_changes(stock_name, stock_changes)
                 monitor.screenshost_stock(stock_name, force_shot=True)
                 num_changes += 1
+
+        monitor.save_current_data(stock_name, stock_data)
 
         thread_messages['progress'] = i
         thread_messages['progress_txt'] = stock_name
     thread_messages['progress_txt'] = ''
-    monitor.last_data_entry = current_data
-
     thread_messages['msg'] = f"Found changes in {num_changes} stocks"
-
-    monitor.save_last_data_to_file()
 
 
 def verify_initial_screenshots(monitor):
@@ -123,7 +120,9 @@ def manage_monitor(monitor):
     thread = threading.Thread(target=verify_initial_screenshots, args=(monitor,), daemon=True)
     thread.start()
     while thread:
-        window.read(timeout=1)
+        event, _ = window.read(timeout=1)
+        if event == 'Run':
+            print("Wait for initialization to finish")
         window['PROGRESS_BAR'].update_bar(thread_messages['progress'])
         window['PROGRESS_TXT'].update(f"{thread_messages['progress_txt']}")
         thread.join(timeout=1)
@@ -133,7 +132,7 @@ def manage_monitor(monitor):
             window['PROGRESS_BAR'].update_bar(0)  # clear the progress bar
             thread = None
     print("Done")
-
+    thread = None
     last_status_image = None
 
     # --------------------- EVENT LOOP ---------------------
@@ -179,9 +178,9 @@ def manage_monitor(monitor):
 
 def try_load_images(monitor, window, stock_name):
     image_paths = [
-        ('Stock-graph', os.path.join(monitor.output_dir, "graphs", stock_name, 'data.png'), None, (150, 150)),
-        ('before-last image', os.path.join(monitor.output_dir, "status_images", stock_name, 'overview-before-last.png'), (0, 275, 1050, 600), (500, 150)),
-        ('Last image', os.path.join(monitor.output_dir, "status_images", stock_name, 'overview-last.png'), (0, 275, 1050, 600), (500, 150)),
+        ('Stock-graph', os.path.join(monitor.output_dir, stock_name, 'special_fields.png'), None, (150, 150)),
+        ('before-last image', os.path.join(monitor.output_dir, stock_name, "status_images", 'overview-before-last.png'), (0, 275, 1050, 600), (500, 150)),
+        ('Last image', os.path.join(monitor.output_dir, stock_name, "status_images", 'overview-last.png'), (0, 275, 1050, 600), (500, 150)),
     ]
 
     for i, (name, img_path, crop, maxsize) in enumerate(image_paths):

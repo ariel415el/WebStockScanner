@@ -5,9 +5,13 @@ import urllib.request
 from multiprocessing import Process
 
 
-def save_data_csv(data, plot_fields, time_str, output_dir):
+def save_data_csv(data, plot_fields, time_str, output_dir, name='special_fields'):
     """Save specified entries from a data dictionary to a csv and plot the cahnge over time"""
-    f_path = os.path.join(output_dir, "data.csv")
+    for field in plot_fields:
+        if field not in data:
+            print(f"Error: Field: {field} is not part of the data dictionary")
+            return
+    f_path = os.path.join(output_dir, f"{name}.csv")
     if not os.path.exists(f_path):
         f = open(f_path, 'w')
         f.write(",".join(['date'] + [field.replace('securities_0_', '') for field in plot_fields]) + "\n")
@@ -17,11 +21,14 @@ def save_data_csv(data, plot_fields, time_str, output_dir):
     f.close()
 
 
-def plot_csv(dir_path):
+def plot_csv(dir_path, name='special_fields'):
     import pandas as pd
     import matplotlib.pyplot as plt
     from matplotlib.ticker import ScalarFormatter
-    df = pd.read_csv(os.path.join(dir_path, 'data.csv'))
+    p = os.path.join(dir_path, f"{name}.csv")
+    if not os.path.exists(p):
+        return
+    df = pd.read_csv(p)
     plt.figure(figsize=(10, 10))
     headers = [x for x in df.head()][1:]
     for c in headers:
@@ -36,7 +43,7 @@ def plot_csv(dir_path):
     plt.tight_layout()
     ax = plt.gca()
     ax.yaxis.set_major_formatter(ScalarFormatter())
-    plt.savefig(os.path.join(dir_path, 'data.png'))
+    plt.savefig(os.path.join(dir_path, f"{name}.png"))
     plt.clf()
 
 
