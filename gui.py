@@ -30,7 +30,7 @@ def verify_initial_data(monitor):
 
 def drive_single_pass(monitor):
     global thread_messages
-
+    global changes_board
     num_changes = 0
     t_print("Collecting data")
     for i, stock_name in enumerate(monitor.stock_names):
@@ -46,6 +46,8 @@ def drive_single_pass(monitor):
                 monitor.screenshost_stock(stock_name)
                 num_changes += 1
 
+                changes_board.append((datetime.datetime.now(), stock_name))
+
         monitor.save_current_data(stock_name, stock_data)
 
         thread_messages['progress'] = i
@@ -54,49 +56,25 @@ def drive_single_pass(monitor):
     thread_messages['msg'] = f"Found changes in {num_changes} stocks"
 
 
-# def read_arguments_layout(time_left, n):
-#     layout = [[sg.Text('Machine Learning Command Line Parameters', font=('Helvetica', 16))],
-#               [sg.Text('Passes', size=(15, 1)),
-#                sg.Spin(values=[i for i in range(1, 1000)], initial_value=20, size=(6, 1)),
-#                sg.Text('Steps', size=(18, 1)),
-#                sg.Spin(values=[i for i in range(1, 1000)], initial_value=20, size=(6, 1))],
-#               [sg.Text('ooa', size=(15, 1)), sg.In(default_text='6', size=(10, 1)), sg.Text('nn', size=(15, 1)),
-#                sg.In(default_text='10', size=(10, 1))],
-#               [sg.Text('q', size=(15, 1)), sg.In(default_text='ff', size=(10, 1)), sg.Text('ngram', size=(15, 1)),
-#                sg.In(default_text='5', size=(10, 1))],
-#               [sg.Text('l', size=(15, 1)), sg.In(default_text='0.4', size=(10, 1)), sg.Text('Layers', size=(15, 1)),
-#                sg.Drop(values=('BatchNorm', 'other'), auto_size_text=True)],
-#               [sg.Text('_' * 100, size=(65, 1))],
-#               [sg.Text('Flags', font=('Helvetica', 15), justification='left')],
-#               [sg.Checkbox('Normalize', size=(12, 1), default=True), sg.Checkbox('Verbose', size=(20, 1))],
-#               [sg.Checkbox('Cluster', size=(12, 1)), sg.Checkbox('Flush Output', size=(20, 1), default=True)],
-#               [sg.Checkbox('Write Results', size=(12, 1)), sg.Checkbox('Keep Intermediate Data', size=(20, 1))],
-#               [sg.Text('_' * 100, size=(65, 1))],
-#               [sg.Text('Loss Functions', font=('Helvetica', 15), justification='left')],
-#               [sg.Radio('Cross-Entropy', 'loss', size=(12, 1)),
-#                sg.Radio('Logistic', 'loss', default=True, size=(12, 1))],
-#               [sg.Radio('Hinge', 'loss', size=(12, 1)), sg.Radio('Huber', 'loss', size=(12, 1))],
-#               [sg.Radio('Kullerback', 'loss', size=(12, 1)), sg.Radio('MAE(L1)', 'loss', size=(12, 1))],
-#               [sg.Radio('MSE(L2)', 'loss', size=(12, 1)), sg.Radio('MB(L0)', 'loss', size=(12, 1))],
-#               [sg.Submit(), sg.Cancel()]]
-#
-#     return lay
-
-
 def get_run_layout(stock_names):
     s = 10
     default_img_path = os.path.join('icons', 'no-img.png')
+
+    img_col1 = sg.Col([
+        [sg.Frame('Before-last image',[[ sg.Image(key='status_image_1', filename=default_img_path)]], key='Frame_1')],
+        [sg.Frame('Last image', [[sg.Image(key='status_image_2', filename=default_img_path)]], key='Frame_2')]
+    ])
+
+    img_col2 = sg.Col([[sg.Frame("Stock graph:", [[sg.Image(key='status_image_0', filename=default_img_path)]], key='Frame_0')]])
+
+
     layout = [[sg.Image(filename=os.path.join('icons', 'OTC.png'))],
-               [sg.Output(size=(70, s)),
-                sg.Listbox(values=sorted(list(stock_names)), select_mode=sg.LISTBOX_SELECT_MODE_SINGLE,
-                           enable_events=True, size=(10,s), key='-LISTBOX-', default_values=stock_names[0]),
-                sg.Frame("Stock graph:", [[sg.Image(key='status_image_0', filename=default_img_path)]], key='Frame_0')
-                # sg.Column([[sg.Image(key='status_image_0', filename=p)]], key='Frame_0', scrollable=True, size=(200,200))
+               [sg.Frame("Log", layout=[[sg.Output(size=(70, s),key='std')]], title_location=sg.TITLE_LOCATION_TOP),
+                sg.Frame("Change status", [[sg.Multiline(size=(30, s), key='status')]], title_location=sg.TITLE_LOCATION_TOP),
+                sg.Frame("Debug", [[sg.Listbox(values=sorted(list(stock_names)), select_mode=sg.LISTBOX_SELECT_MODE_SINGLE,
+                           enable_events=True, size=(10,s), key='-LISTBOX-', default_values=stock_names[0])]],title_location=sg.TITLE_LOCATION_TOP)
                 ],
-               [sg.Frame('Before-last image',[[ sg.Image(key='status_image_1', filename=default_img_path)]], key='Frame_1')],
-               # [sg.Column([[sg.Image(key='status_image_1', filename=p)]], key='Frame_1', scrollable=True, size=(500,100))],
-               [sg.Frame('Last image', [[sg.Image(key='status_image_2', filename=default_img_path)]], key='Frame_2')],
-               # [sg.Column([[sg.Image(key='status_image_2', filename=p)]], key='Frame_2', scrollable=True, size=(500,100))],
+                [img_col1, img_col2],
                [sg.Text(f"Next run in N/A", key='time_to_next_run', size=(15, 1)),
                 sg.Drop([0, 1, 5, 10, 30, 60], key='wait_time', default_value=30)],
                [sg.Text('Progress:'), sg.ProgressBar(len(stock_names), size=(20, 20), orientation='h', key='PROGRESS_BAR'),
@@ -109,7 +87,9 @@ def get_run_layout(stock_names):
 
 def manage_monitor(monitor):
     global thread_messages
+    global changes_board
     thread_messages = {'progress': 0, 'progress_txt': '', 'msg': ''}
+    changes_board = []
     timer = time()
     sg.theme('Dark Gray 13')
 
@@ -168,6 +148,7 @@ def manage_monitor(monitor):
             window['PROGRESS_BAR'].update_bar(thread_messages['progress'])
             window['PROGRESS_TXT'].update(f"{thread_messages['progress_txt']}")
 
+            window['status'].update("\n".join([f"{str(x[0]).split('.')[0]}: {x[1]}" for x in changes_board]))
             thread.join(timeout=0)
             if not thread.is_alive():  # the thread finished
                 t_print(thread_messages['msg'])
@@ -175,6 +156,7 @@ def manage_monitor(monitor):
                 thread_messages['progress'] = 0
                 window['PROGRESS_BAR'].update_bar(0)  # clear the progress bar
                 t_print("Data collecting thread terminated")
+
             timer = time()
 
     # if user exits the window, then close the window and exit the GUI func
@@ -191,7 +173,7 @@ def try_load_images(monitor, window, stock_name):
         before_last_img_path = img_paths[-2]
 
     image_paths = [
-        ('Stock-graph', os.path.join(monitor.output_dir, stock_name, 'special_fields.png'), None, (150, 150)),
+        ('Stock-graph', os.path.join(monitor.output_dir, stock_name, 'special_fields.png'), None, (350, 350)),
         ('before-last image', before_last_img_path, (0, 275, 1050, 600), (500, 150)),
         ('Last image', last_img_path, (0, 275, 1050, 600), (500, 150)),
     ]

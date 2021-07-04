@@ -33,6 +33,7 @@ def plot_csv(dir_path, name='special_fields'):
     plt.figure(figsize=(10, 10))
     headers = [x for x in df.head()][1:]
     for c in headers:
+        print(df[c])
         plt.plot(df['date'], df[c], label=c)
         # plt.gcf().autofmt_xdate()
         plt.grid()
@@ -42,8 +43,8 @@ def plot_csv(dir_path, name='special_fields'):
     plt.legend(loc='lower left', bbox_to_anchor=(0.0, 1.0),fancybox=True, shadow=True, ncol=len(headers))
     # plt.grid()
     plt.tight_layout()
-    ax = plt.gca()
-    ax.yaxis.set_major_formatter(ScalarFormatter())
+    # ax = plt.gca()
+    # ax.yaxis.set_major_formatter(ScalarFormatter())
     plt.savefig(os.path.join(dir_path, f"{name}.png"))
     plt.clf()
 

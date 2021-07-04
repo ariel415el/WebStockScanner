@@ -47,7 +47,8 @@ class StockMonitor:
             os.makedirs(dirpath, exist_ok=True)
             time_str = utils.get_time_str(for_filename=True)
             new_file_path = os.path.join(dirpath, f"{time_str}.png")
-            ret_val += self.screenshoter.take_full_screen_screenshot(f"https://www.otcmarkets.com/stock/{stock_name}/{tab_name}", new_file_path)
+            ret_val += self.screenshoter.take_full_screen_screenshot(
+                f"https://www.otcmarkets.com/stock/{stock_name}/{tab_name}", new_file_path)
 
             if len(os.listdir(dirpath)) > self.max_status_images:
                 oldest_path = min(Path(dirpath).iterdir(), key=os.path.getmtime)
@@ -57,24 +58,24 @@ class StockMonitor:
 
     def collect_stock_data(self, stock_name):
         """Returns a current data dicctionary for each stock loaded from the website servers"""
-        try:
-            data = utils.get_raw_stock_data(stock_name)
-            data = utils.flatten_dict(data)
-            data = {k: v for k, v in data.items() if k not in self.ignore_fields}
-            return data
-        except Exception as e:
-            return None
+        # try:
+        #     data = utils.get_raw_stock_data(stock_name)
+        #     data = utils.flatten_dict(data)
+        #     data = {k: v for k, v in data.items() if k not in self.ignore_fields}
+        #     return data
+        # except Exception as e:
+        #     return None
 
         # manager_names = ['Kevin Booker', 'Kevin durant', 'Micheal Jordan', 'Kobi Bryant', 'Chris Paul', 'R Donoven JR']
-        # import random
-        # if random.random() > 0.2:
-        #     data = {"securities_0_authorizedShares": random.choice([1,2,3,4]),
-        #             "securities_0_outstandingShares":  random.choice(manager_names),
-        #             "securities_0_restrictedShares": random.choice([12,13,45,667]),
-        #             "securities_0_unrestrictedShares": random.choice([555,666,777,888])}
-        # else:
-        #     data = None
-        # return data
+        import random
+        if random.random() > 0.2:
+            data = {"securities_0_authorizedShares": random.choice([1, 2, 3, 4]),
+                    "securities_0_outstandingShares": random.choice([15, 16, 18, 22]),
+                    "securities_0_restrictedShares": random.choice([12, 13, 45, 667]),
+                    "securities_0_unrestrictedShares": random.choice([555, 666, 777, 888])}
+        else:
+            data = None
+        return data
 
     def write_changes(self, stock_name, stock_changes):
         """Dumpy changes to log file"""
