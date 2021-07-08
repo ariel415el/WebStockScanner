@@ -1,6 +1,9 @@
+import datetime
 import pickle
 import json
 import os
+
+import pandas as pd
 
 from screen_shooter import ScreenShooter
 import utils
@@ -28,9 +31,14 @@ class StockMonitor:
                 self.last_data_entry[stock_name] = None
 
     def save_current_data(self, stock_name, stock_data):
+        # pickle entire data
         self.last_data_entry[stock_name] = stock_data
         cache_path = os.path.join(self.output_dir, "stocks", stock_name, 'last_entry_cache.pkl')
         pickle.dump(stock_data, open(cache_path, 'wb'))
+
+        # save important fields:
+        utils.update_prices_log(os.path.join(self.output_dir, "price_status.csv"), stock_name, stock_data)
+
 
         # import pandas as pd
         # csv_path = cache_path.replace(".pkl", ".csv")

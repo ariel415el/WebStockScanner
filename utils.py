@@ -5,6 +5,8 @@ from datetime import datetime
 
 from multiprocessing import Process
 
+import pandas as pd
+
 
 def save_data_csv(data, plot_fields, time_str, output_dir, name='special_fields'):
     """Save specified entries from a data dictionary to a csv and plot the cahnge over time"""
@@ -117,3 +119,56 @@ def get_time_str(for_filename=True):
     else:
         time_str = str(t).replace(" ", "-").split(".")[0]
     return time_str
+
+
+def update_changes_log(changes_log_path, stock_names, max_cols=50):
+    """Adds a column with all the sock given names. header is the date. Saves up to 'max_cols' columns"""
+    # write changes
+    new_col = pd.DataFrame(zip([f"{str(datetime.now()).split('.')[0]}"] + stock_names))
+    if not os.path.exists(changes_log_path):
+        new_col.to_csv(changes_log_path, header=False, index=False)
+    else:
+        df = pd.read_csv(changes_log_path, header=None)
+        if df.shape[1] > max_cols:
+            df = df.T[-max_cols:].T
+        pd.concat([new_col, df], axis=1).to_csv(changes_log_path, header=False, index=False)
+
+
+def update_prices_log(log_path, stock_name, stock_data):
+    """Updates/adds a row for a given stock in a global file of stocks"""
+    header = ["stock", "lastSale", "change", "percentChange"]
+    if stock_data is None:
+        return
+    new_row = pd.DataFrame([[stock_name] + [stock_data[k] for k in header[1:]]], columns=header)
+    if not os.path.exists(log_path):
+        new_row.to_csv(log_path, columns=header, index=False)
+    else:
+        df = pd.read_csv(log_path)
+
+        if any(df['stock'] == stock_name):
+            df.loc[df['stock'] == stock_name] = new_row
+        else:
+            df = df.append(new_row)
+
+        df.to_csv(log_path, columns=header, index=False)
+
+
+def dump_stocks_plot(output_dir, stock_name_list):
+    fields = ["lastSale", "change", "percentChange"]
+    df = pd.read_csv(os.path.join(output_dir, "price_status.csv"))
+    df = df.loc[df['stock'].isin(stock_name_list)]
+    from matplotlib import pyplot as plt
+    fig, axes = plt.subplots(3)
+    for i in range(3):
+            field = fields[i]
+            df.plot.bar(x='stock', y=field, rot=45, ax=axes[i], color=(df[field] > 0).map({True: 'g', False: 'r'}))
+            axes[i].axhline(y=0, color='k', linestyle='--')
+            # axes[i].set_title(field)
+            if i < 2:
+                axes[i].set_xticks([])
+                axes[i].axes.get_xaxis().set_visible(False)
+
+    plot_path = os.path.join(output_dir,"stock_bars.png")
+    fig.savefig(plot_path)
+
+    return plot_path
