@@ -30,25 +30,17 @@ class StockMonitor:
             else:
                 self.last_data_entry[stock_name] = None
 
-    def save_current_data(self, stock_name, stock_data):
+    def pickle_entire_stock_data(self, stock_name, stock_data):
         # pickle entire data
         self.last_data_entry[stock_name] = stock_data
         cache_path = os.path.join(self.output_dir, "stocks", stock_name, 'last_entry_cache.pkl')
         pickle.dump(stock_data, open(cache_path, 'wb'))
 
-        # save important fields:
-        utils.update_prices_log(os.path.join(self.output_dir, "price_status.csv"), stock_name, stock_data)
-
-
-        # import pandas as pd
-        # csv_path = cache_path.replace(".pkl", ".csv")
-        # pd.DataFrame.from_dict({k: [v] for k, v in stock_data.items()}).to_csv(csv_path, mode='a',
-        #                                                                header=not os.path.exists(csv_path))
-
     def screenshost_stock(self, stock_name):
         """Take a screen shot from the three tabs of this stock page"""
 
         ret_val = 0
+
         # for tab_name in ['profile', 'overview', 'security']:
         #     dirpath = os.path.join(self.output_dir, "stocks", stock_name, "status_images", tab_name)
         #     os.makedirs(dirpath, exist_ok=True)
@@ -115,3 +107,23 @@ class StockMonitor:
             os.makedirs(output_dir, exist_ok=True)
             utils.save_data_csv(stock_data, self.plot_fields, time_str, output_dir)
             utils.plot_csv_process(output_dir)
+
+    def update_prices_status(self, stock_name, stock_data):
+        """Updates/adds a row for a given stock in a global file of stocks"""
+        log_path = os.path.join(self.output_dir, "price_status.csv")
+        header = ["stock", "lastSale", "change", "percentChange"]
+        if stock_data is None:
+            return
+        new_row = [[stock_name] + [stock_data[k] for k in header[1:]]]
+        if not os.path.exists(log_path):
+            new_row = pd.DataFrame(new_row, columns=header)
+            new_row.to_csv(log_path, columns=header, index=False)
+        else:
+            df = pd.read_csv(log_path)
+            if any(df['stock'] == stock_name):
+                df.loc[df['stock'] == stock_name] = new_row
+            else:
+                new_row = pd.DataFrame(new_row, columns=header)
+                df = df.append(new_row, ignore_index=True)
+
+            df.to_csv(log_path, columns=header, index=False)

@@ -27,7 +27,6 @@ def save_data_csv(data, plot_fields, time_str, output_dir, name='special_fields'
 def plot_csv(dir_path, name='special_fields'):
     import pandas as pd
     import matplotlib.pyplot as plt
-    from matplotlib.ticker import ScalarFormatter
     p = os.path.join(dir_path, f"{name}.csv")
     if not os.path.exists(p):
         return
@@ -36,16 +35,12 @@ def plot_csv(dir_path, name='special_fields'):
     headers = [x for x in df.head()][1:]
     for c in headers:
         plt.plot(df['date'], df[c], label=c)
-        # plt.gcf().autofmt_xdate()
         plt.grid()
     plt.xticks(rotation=45)
     # ax.yaxis.set_major_formatter(ScalarFormatter())
     plt.legend()
     plt.legend(loc='lower left', bbox_to_anchor=(0.0, 1.0),fancybox=True, shadow=True, ncol=len(headers))
-    # plt.grid()
     plt.tight_layout()
-    # ax = plt.gca()
-    # ax.yaxis.set_major_formatter(ScalarFormatter())
     plt.savefig(os.path.join(dir_path, f"{name}.png"))
     plt.clf()
 
@@ -132,25 +127,6 @@ def update_changes_log(changes_log_path, stock_names, max_cols=50):
         if df.shape[1] > max_cols:
             df = df.T[-max_cols:].T
         pd.concat([new_col, df], axis=1).to_csv(changes_log_path, header=False, index=False)
-
-
-def update_prices_log(log_path, stock_name, stock_data):
-    """Updates/adds a row for a given stock in a global file of stocks"""
-    header = ["stock", "lastSale", "change", "percentChange"]
-    if stock_data is None:
-        return
-    new_row = pd.DataFrame([[stock_name] + [stock_data[k] for k in header[1:]]], columns=header)
-    if not os.path.exists(log_path):
-        new_row.to_csv(log_path, columns=header, index=False)
-    else:
-        df = pd.read_csv(log_path)
-
-        if any(df['stock'] == stock_name):
-            df.loc[df['stock'] == stock_name] = new_row
-        else:
-            df = df.append(new_row)
-
-        df.to_csv(log_path, columns=header, index=False)
 
 
 def dump_stocks_plot(output_dir, stock_name_list):

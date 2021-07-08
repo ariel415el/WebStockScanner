@@ -22,8 +22,10 @@ def verify_initial_data(monitor, window):
         if not os.path.exists(stock_dir_path):
             os.makedirs(stock_dir_path, exist_ok=True)
             stock_data = monitor.collect_stock_data(stock_name)
-            monitor.save_current_data(stock_name, stock_data)
             monitor.screenshost_stock(stock_name)
+            monitor.update_prices_status(stock_name, stock_data)
+            monitor.write_plot_fields_data(stock_name, stock_data)
+            monitor.pickle_entire_stock_data(stock_name, stock_data)
 
         window['PROGRESS_BAR'].update_bar(i)
         window['PROGRESS_TXT'].update(stock_name)
@@ -35,19 +37,22 @@ def drive_single_pass(monitor, window):
     t_print("Collecting data")
     for i, stock_name in enumerate(monitor.stock_names):
         stock_data = monitor.collect_stock_data(stock_name)
+        monitor.update_prices_status(stock_name, stock_data)
         if monitor.last_data_entry[stock_name] is not None:
-
             stock_changes = utils.compare_data_dicts(monitor.last_data_entry[stock_name], stock_data)
 
             if stock_changes:
-                monitor.write_plot_fields_data(stock_name, stock_data)
                 monitor.write_changes(stock_name, stock_changes)
                 monitor.screenshost_stock(stock_name)
+
+                special_fields_changes = [x for x in stock_changes if x in monitor.plot_fields]
+                if special_fields_changes:
+                    monitor.write_plot_fields_data(stock_name, stock_data)
 
                 stocks_with_changes.append(stock_name)
                 window['status'].update(f"{str(datetime.datetime.now()).split('.')[0]}: {stock_name}\n" + window['status'].get())
 
-        monitor.save_current_data(stock_name, stock_data)
+        monitor.pickle_entire_stock_data(stock_name, stock_data)
 
         window['PROGRESS_BAR'].update_bar(i)
         window['PROGRESS_TXT'].update(stock_name)
@@ -111,7 +116,8 @@ def manage_monitor(monitor):
         event, _ = window.read(timeout=100)
         if event == 'Run':
             print("Wait for initialization to finish")
-
+        if event in (sg.WIN_CLOSED, 'Exit'):
+            exit()
         thread.join(timeout=1)
         if not thread.is_alive():
             window['PROGRESS_BAR'].update_bar(0)  # clear the progress bar

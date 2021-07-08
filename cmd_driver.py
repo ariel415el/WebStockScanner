@@ -9,7 +9,7 @@ def verify_initial_data(monitor):
         if not os.path.exists(stock_dir_path):
             os.makedirs(stock_dir_path, exist_ok=True)
             stock_data = monitor.collect_stock_data(stock_name)
-            monitor.save_current_data(stock_name, stock_data)
+            monitor.pickle_entire_stock_data(stock_name, stock_data)
             monitor.screenshost_stock(stock_name)
 
 
