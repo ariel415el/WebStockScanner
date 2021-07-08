@@ -1,7 +1,6 @@
 import pickle
 import json
 import os
-from pathlib import Path
 
 from screen_shooter import ScreenShooter
 import utils
@@ -22,7 +21,7 @@ class StockMonitor:
     def load_cached_data(self):
         self.last_data_entry = dict()
         for stock_name in self.stock_names:
-            cache_path = os.path.join(self.output_dir, stock_name, 'last_entry_cache.pkl')
+            cache_path = os.path.join(self.output_dir, "stocks", stock_name, 'last_entry_cache.pkl')
             if os.path.exists(cache_path):
                 self.last_data_entry[stock_name] = pickle.load(open(cache_path, 'rb'))
             else:
@@ -30,7 +29,7 @@ class StockMonitor:
 
     def save_current_data(self, stock_name, stock_data):
         self.last_data_entry[stock_name] = stock_data
-        cache_path = os.path.join(self.output_dir, stock_name, 'last_entry_cache.pkl')
+        cache_path = os.path.join(self.output_dir, "stocks", stock_name, 'last_entry_cache.pkl')
         pickle.dump(stock_data, open(cache_path, 'wb'))
 
         # import pandas as pd
@@ -42,17 +41,17 @@ class StockMonitor:
         """Take a screen shot from the three tabs of this stock page"""
 
         ret_val = 0
-        for tab_name in ['profile', 'overview', 'security']:
-            dirpath = os.path.join(self.output_dir, stock_name, "status_images", tab_name)
-            os.makedirs(dirpath, exist_ok=True)
-            time_str = utils.get_time_str(for_filename=True)
-            new_file_path = os.path.join(dirpath, f"{time_str}.png")
-            ret_val += self.screenshoter.take_full_screen_screenshot(
-                f"https://www.otcmarkets.com/stock/{stock_name}/{tab_name}", new_file_path)
-
-            if len(os.listdir(dirpath)) > self.max_status_images:
-                oldest_path = min(Path(dirpath).iterdir(), key=os.path.getmtime)
-                os.remove(oldest_path)
+        # for tab_name in ['profile', 'overview', 'security']:
+        #     dirpath = os.path.join(self.output_dir, "stocks", stock_name, "status_images", tab_name)
+        #     os.makedirs(dirpath, exist_ok=True)
+        #     time_str = utils.get_time_str(for_filename=True)
+        #     new_file_path = os.path.join(dirpath, f"{time_str}.png")
+        #     ret_val += self.screenshoter.take_full_screen_screenshot(
+        #         f"https://www.otcmarkets.com/stock/{stock_name}/{tab_name}", new_file_path)
+        #
+        #     if len(os.listdir(dirpath)) > self.max_status_images:
+        #         oldest_path = min(Path(dirpath).iterdir(), key=os.path.getmtime)
+        #         os.remove(oldest_path)
 
         return ret_val
 
@@ -72,7 +71,12 @@ class StockMonitor:
             data = {"securities_0_authorizedShares": random.choice([1, 2, 3, 4]),
                     "securities_0_outstandingShares": random.choice([15, 16, 18, 22]),
                     "securities_0_restrictedShares": random.choice([12, 13, 45, 667]),
-                    "securities_0_unrestrictedShares": random.choice([555, 666, 777, 888])}
+                    "securities_0_unrestrictedShares": random.choice([555, 666, 777, 888]),
+                    "lastSale": random.choice([0.5, 0.1, 0.7, 0.8]),
+                    "change":random.choice([-0.001, -0.002, 0.005, -0.02]),
+                    "percentChange":random.choice([0.4, 0.6, -0.2, 0.05]),
+                    "tickName":random.choice(['Up', 'Down'])
+            }
         else:
             data = None
         return data
@@ -82,7 +86,7 @@ class StockMonitor:
         if stock_changes:
             time_str = utils.get_time_str(for_filename=True)
 
-            logs_path = os.path.join(self.output_dir, stock_name, 'change_logs')
+            logs_path = os.path.join(self.output_dir, "stocks", stock_name, 'change_logs')
             os.makedirs(logs_path, exist_ok=True)
             log_file = open(os.path.join(logs_path, f"{time_str}-changes.log"), 'w')
 
@@ -99,7 +103,7 @@ class StockMonitor:
         if stock_data:
             time_str = utils.get_time_str(for_filename=False)
 
-            output_dir = os.path.join(self.output_dir, stock_name)
+            output_dir = os.path.join(self.output_dir, "stocks", stock_name)
             os.makedirs(output_dir, exist_ok=True)
             utils.save_data_csv(stock_data, self.plot_fields, time_str, output_dir)
             utils.plot_csv_process(output_dir)

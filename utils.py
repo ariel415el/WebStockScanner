@@ -33,7 +33,6 @@ def plot_csv(dir_path, name='special_fields'):
     plt.figure(figsize=(10, 10))
     headers = [x for x in df.head()][1:]
     for c in headers:
-        print(df[c])
         plt.plot(df['date'], df[c], label=c)
         # plt.gcf().autofmt_xdate()
         plt.grid()
@@ -63,10 +62,11 @@ def get_dict_from_url(url):
 
 
 def get_raw_stock_data(stock_name):
-    # url = f"https://backend.otcmarkets.com/otcapi/stock/trade/inside/{stock_name}?symbol={stock_name}"
+    url = f"https://backend.otcmarkets.com/otcapi/stock/trade/inside/{stock_name}?symbol={stock_name}"
+    prices_dict = get_dict_from_url(url)
     url = f"https://backend.otcmarkets.com/otcapi/company/profile/full/{stock_name}?symbol={stock_name}"
     company_dict = get_dict_from_url(url)
-
+    company_dict.update({k:prices_dict[k] for k in ["lastSale","change", "percentChange", "tickName"]})
     return company_dict
 
 
