@@ -31,7 +31,7 @@ def verify_initial_data(monitor, window):
         window['PROGRESS_TXT'].update(stock_name)
 
 
-def drive_single_pass(monitor, window):
+def drive_single_pass(monitor, window, alarm_on_change=True):
     # global thread_messages
     stocks_with_changes = []
     t_print("Collecting data")
@@ -39,7 +39,7 @@ def drive_single_pass(monitor, window):
         stock_data = monitor.collect_stock_data(stock_name)
         monitor.update_prices_status(stock_name, stock_data)
         if monitor.last_data_entry[stock_name] is not None:
-            stock_changes = utils.compare_data_dicts(monitor.last_data_entry[stock_name], stock_data)
+            stock_changes = utils.compare_data_dicts(monitor.last_data_entry[stock_name], stock_data, monitor.ignore_fields)
 
             if stock_changes:
                 monitor.write_changes(stock_name, stock_changes)
@@ -49,8 +49,11 @@ def drive_single_pass(monitor, window):
                 if special_fields_changes:
                     monitor.write_plot_fields_data(stock_name, stock_data)
 
-                stocks_with_changes.append(stock_name)
                 window['status'].update(f"{str(datetime.datetime.now()).split('.')[0]}: {stock_name}\n" + window['status'].get())
+                if alarm_on_change:
+                    stocks_with_changes.append(stock_name)
+                    from playsound import playsound
+                    playsound(os.path.join('icons','icq-uh-oh.mp3'))
 
         monitor.pickle_entire_stock_data(stock_name, stock_data)
 
@@ -68,14 +71,14 @@ def get_run_layout(stock_names):
     debug_col_1 = sg.Col([[sg.Input(key='input1', size=(10, 1)), sg.Button('Filter', key='filter1')],
                           [sg.Listbox(values=sorted(list(stock_names)), select_mode=sg.LISTBOX_SELECT_MODE_SINGLE,
                                       enable_events=True, size=(10, s), key='list_box1', default_values=stock_names[0]),
-                           sg.Button('Show', key='show1'),
+                           sg.Button('Show', key='show1')
                            ]])
     debug_col_1 = sg.Frame("Stock Change images", [[debug_col_1]], title_location=sg.TITLE_LOCATION_TOP)
 
-    debug_col_2 = sg.Col([[sg.Input(key='input2', size=(10, 1)), sg.Button('Filter', key='filter2')],
+    debug_col_2 = sg.Col([[sg.Input(key='input2', size=(10, 1)), sg.Button('Filter', key='filter2'), sg.Button('All', key='all2'), sg.Button('Clear', key='clr2')],
                           [sg.Listbox(values=sorted(list(stock_names)), select_mode=sg.LISTBOX_SELECT_MODE_MULTIPLE,
                                       enable_events=True, size=(10, s), key='list_box2', default_values=stock_names[0]),
-                           sg.Button('Show', key='show2')],
+                           sg.Button('Show', key='show2')]
                           ])
     debug_col_2 = sg.Frame("Prices heatmap", [[debug_col_2]], title_location=sg.TITLE_LOCATION_TOP)
     layout = [[sg.Image(filename=os.path.join('icons', 'OTC.png'))],
@@ -89,6 +92,7 @@ def get_run_layout(stock_names):
               [sg.Text('Progress:'),
                sg.ProgressBar(len(stock_names), size=(20, 20), orientation='h', key='PROGRESS_BAR'),
                sg.Text('', key='PROGRESS_TXT', size=(15, 1))],
+              [sg.Checkbox('Sound-Alarm', True, key='alarm')],
               [sg.Button('Run'), sg.Button('Exit')]
               ]
 
@@ -142,7 +146,10 @@ def manage_monitor(monitor):
             if event == f'filter{i}':
                 window[f'list_box{i}'].update(
                     [x for x in monitor.stock_names if values[f'input{i}'] in x])  # display in the listbox
-
+        if event == f'all2':
+            window['list_box2'].set_value(monitor.stock_names)
+        if event == f'clr2':
+            window['list_box2'].set_value([])
         if event in (sg.WIN_CLOSED, 'Exit'):
             break
 
@@ -152,7 +159,7 @@ def manage_monitor(monitor):
             if thread is not None:
                 t_print("Already running")
             else:
-                thread = threading.Thread(target=drive_single_pass, args=(monitor, window), daemon=True)
+                thread = threading.Thread(target=drive_single_pass, args=(monitor, window, values['alarm']), daemon=True)
                 thread.start()
 
         # Terminate data collecting thread
@@ -178,7 +185,7 @@ def show_price_changes(stock_name_list, output_dir):
     window = sg.Window("Second Window", layout, modal=True, finalize=True)
 
     plot_path = dump_stocks_plot(output_dir, stock_name_list)
-    img_data = get_img_data(plot_path, first=True, maxsize=(500,500))
+    img_data = get_img_data(plot_path, first=True, maxsize=(1000,1000))
     window.Element(f"plot").Update(data=img_data)
     while True:
         event, values = window.read()

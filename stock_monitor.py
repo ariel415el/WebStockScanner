@@ -2,6 +2,7 @@ import datetime
 import pickle
 import json
 import os
+from pathlib import Path
 
 import pandas as pd
 
@@ -41,45 +42,45 @@ class StockMonitor:
 
         ret_val = 0
 
-        # for tab_name in ['profile', 'overview', 'security']:
-        #     dirpath = os.path.join(self.output_dir, "stocks", stock_name, "status_images", tab_name)
-        #     os.makedirs(dirpath, exist_ok=True)
-        #     time_str = utils.get_time_str(for_filename=True)
-        #     new_file_path = os.path.join(dirpath, f"{time_str}.png")
-        #     ret_val += self.screenshoter.take_full_screen_screenshot(
-        #         f"https://www.otcmarkets.com/stock/{stock_name}/{tab_name}", new_file_path)
-        #
-        #     if len(os.listdir(dirpath)) > self.max_status_images:
-        #         oldest_path = min(Path(dirpath).iterdir(), key=os.path.getmtime)
-        #         os.remove(oldest_path)
+        for tab_name in ['profile', 'overview', 'security']:
+            dirpath = os.path.join(self.output_dir, "stocks", stock_name, "status_images", tab_name)
+            os.makedirs(dirpath, exist_ok=True)
+            time_str = utils.get_time_str(for_filename=True)
+            new_file_path = os.path.join(dirpath, f"{time_str}.png")
+            ret_val += self.screenshoter.take_full_screen_screenshot(
+                f"https://www.otcmarkets.com/stock/{stock_name}/{tab_name}", new_file_path)
+
+            if len(os.listdir(dirpath)) > self.max_status_images:
+                oldest_path = min(Path(dirpath).iterdir(), key=os.path.getmtime)
+                os.remove(oldest_path)
 
         return ret_val
 
     def collect_stock_data(self, stock_name):
         """Returns a current data dicctionary for each stock loaded from the website servers"""
-        # try:
-        #     data = utils.get_raw_stock_data(stock_name)
-        #     data = utils.flatten_dict(data)
-        #     data = {k: v for k, v in data.items() if k not in self.ignore_fields}
-        #     return data
-        # except Exception as e:
-        #     return None
+        try:
+            data = utils.get_raw_stock_data(stock_name)
+            data = utils.flatten_dict(data)
+            # data = {k: v for k, v in data.items() if k not in self.ignore_fields}
+            return data
+        except Exception as e:
+            return None
 
-        # manager_names = ['Kevin Booker', 'Kevin durant', 'Micheal Jordan', 'Kobi Bryant', 'Chris Paul', 'R Donoven JR']
-        import random
-        if random.random() > 0.2:
-            data = {"securities_0_authorizedShares": random.choice([1, 2, 3, 4]),
-                    "securities_0_outstandingShares": random.choice([15, 16, 18, 22]),
-                    "securities_0_restrictedShares": random.choice([12, 13, 45, 667]),
-                    "securities_0_unrestrictedShares": random.choice([555, 666, 777, 888]),
-                    "lastSale": random.choice([0.5, 0.1, 0.7, 0.8]),
-                    "change":random.choice([-0.001, -0.002, 0.005, -0.02]),
-                    "percentChange":random.choice([0.4, 0.6, -0.2, 0.05]),
-                    "tickName":random.choice(['Up', 'Down'])
-            }
-        else:
-            data = None
-        return data
+        # # manager_names = ['Kevin Booker', 'Kevin durant', 'Micheal Jordan', 'Kobi Bryant', 'Chris Paul', 'R Donoven JR']
+        # import random
+        # if random.random() > 0.2:
+        #     data = {"securities_0_authorizedShares": random.choice([1, 2, 3, 4]),
+        #             "securities_0_outstandingShares": random.choice([15, 16, 18, 22]),
+        #             "securities_0_restrictedShares": random.choice([12, 13, 45, 667]),
+        #             "securities_0_unrestrictedShares": random.choice([555, 666, 777, 888]),
+        #             "lastSale": random.choice([0.5, 0.1, 0.7, 0.8]),
+        #             "change":random.choice([-0.001, -0.002, 0.005, -0.02]),
+        #             "percentChange":random.choice([0.4, 0.6, -0.2, 0.05]),
+        #             "tickName":random.choice(['Up', 'Down'])
+        #     }
+        # else:
+        #     data = None
+        # return data
 
     def write_changes(self, stock_name, stock_changes):
         """Dumpy changes to log file"""

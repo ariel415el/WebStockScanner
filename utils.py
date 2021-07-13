@@ -12,8 +12,8 @@ def save_data_csv(data, plot_fields, time_str, output_dir, name='special_fields'
     """Save specified entries from a data dictionary to a csv and plot the cahnge over time"""
     for field in plot_fields:
         if field not in data:
-            print(f"Error: Field: {field} is not part of the data dictionary")
-            return
+            print(f"Error: Field: {field} is not part of the data dictionary ({os.path.basename(output_dir)})")
+            data[field] = 'NA'
     f_path = os.path.join(output_dir, f"{name}.csv")
     if not os.path.exists(f_path):
         f = open(f_path, 'w')
@@ -63,16 +63,16 @@ def get_raw_stock_data(stock_name):
     prices_dict = get_dict_from_url(url)
     url = f"https://backend.otcmarkets.com/otcapi/company/profile/full/{stock_name}?symbol={stock_name}"
     company_dict = get_dict_from_url(url)
-    company_dict.update({k:prices_dict[k] for k in ["lastSale","change", "percentChange", "tickName"]})
+    company_dict.update({k:prices_dict[k] for k in ["lastSale", "change", "percentChange", "tickName"]})
     return company_dict
 
 
-def compare_data_dicts(last_data, current_data):
+def compare_data_dicts(last_data, current_data, ignore_fields):
     """Return a dictionary with all changes between two dictionaries"""
     stock_changes = {}
     if last_data and current_data:
         for k, v in last_data.items():
-            if k in current_data and current_data[k] != v:
+            if k in current_data and current_data[k] != v and k not in ignore_fields:
                 stock_changes[k] = (v, current_data[k])
     return stock_changes
 
@@ -130,21 +130,40 @@ def update_changes_log(changes_log_path, stock_names, max_cols=50):
 
 
 def dump_stocks_plot(output_dir, stock_name_list):
-    fields = ["lastSale", "change", "percentChange"]
+    # fields = ["lastSale", "change", "percentChange"]
     df = pd.read_csv(os.path.join(output_dir, "price_status.csv"))
     df = df.loc[df['stock'].isin(stock_name_list)]
     from matplotlib import pyplot as plt
-    fig, axes = plt.subplots(3)
-    for i in range(3):
-            field = fields[i]
-            df.plot.bar(x='stock', y=field, rot=45, ax=axes[i], color=(df[field] > 0).map({True: 'g', False: 'r'}))
-            axes[i].axhline(y=0, color='k', linestyle='--')
-            # axes[i].set_title(field)
-            if i < 2:
-                axes[i].set_xticks([])
-                axes[i].axes.get_xaxis().set_visible(False)
 
+    # ax = df.plot.bar(x='stock', y="percentChange", rot=45, color=(df["percentChange"] > 0).map({True: 'g', False: 'r'}))
+    # ax.axhline(y=0, color='k', linestyle='--')
+    # ax.set_ylabel("Percentage cahge")
+
+    plt.figure(figsize=(min(len(stock_name_list),20), 5))
+
+    pos_ind, neg_ind = df["percentChange"] > 0, df["percentChange"] <= 0
+    pos_rects = plt.bar(df['stock'][pos_ind], df["percentChange"][pos_ind], color='g')
+    neg_rects = plt.bar(df['stock'][neg_ind], df["percentChange"][neg_ind], color='r')
+
+    for i, rect in enumerate(pos_rects):
+        height = rect.get_height()
+        plt.text(rect.get_x() + rect.get_width() / 2., 0.99 * height,
+                f"{df['lastSale'][pos_ind].tolist()[i]}$", ha='center', va='bottom')
+
+    for i, rect in enumerate(neg_rects):
+        height = rect.get_height()
+        plt.text(rect.get_x() + rect.get_width() / 2., 0.99 * height,
+                f"{df['lastSale'][neg_ind].tolist()[i]:.4f}$", ha='center', va='top')
+
+    lim = max(abs(df["percentChange"])) * 1.2
+    plt.ylim(-lim,lim)
+
+    locs, labels = plt.yticks()
+    plt.yticks(ticks=locs, labels=[f'{x:.0f}%' for x in locs])
+
+    plt.xticks(rotation=45)
+    plt.grid()
     plot_path = os.path.join(output_dir,"stock_bars.png")
-    fig.savefig(plot_path)
-
+    plt.savefig(plot_path)
+    plt.clf()
     return plot_path
