@@ -1,5 +1,5 @@
 from selenium import webdriver
-from time import sleep
+
 
 class ScreenShooter:
     def __init__(self, wait_time=0):
@@ -7,8 +7,7 @@ class ScreenShooter:
         options.add_argument("--log-level=3")
         options.headless = True
         self.driver = webdriver.Chrome('chromedriver.exe',  options=options)
-        self.driver.set_page_load_timeout(10)
-        self.wait_time = wait_time
+        self.driver.set_page_load_timeout(wait_time)
 
     def take_full_screen_screenshot(self, url, save_path):
         try:

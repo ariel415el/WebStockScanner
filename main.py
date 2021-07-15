@@ -1,12 +1,6 @@
 import argparse
 from time import sleep
-
-from tqdm import tqdm
-
-from gui_driver import manage_monitor
-import utils
 from stock_monitor import StockMonitor
-
 
 
 def main():
@@ -26,8 +20,6 @@ def main():
         monitor.run_cycle(1)
         print("Cycle done sleepnig..")
         sleep(4)
-    # drive_monitor_on_cmd(monitor)
-    # manage_monitor(monitor)
 
 if __name__ == '__main__':
     import multiprocessing

@@ -5,23 +5,8 @@ from datetime import datetime
 
 from multiprocessing import Process
 
+import numpy as np
 import pandas as pd
-
-
-def save_data_csv(data, plot_fields, time_str, output_dir, name='special_fields'):
-    """Save specified entries from a data dictionary to a csv and plot the cahnge over time"""
-    for field in plot_fields:
-        if field not in data:
-            print(f"Error: Field: {field} is not part of the data dictionary ({os.path.basename(output_dir)})")
-            data[field] = 'NA'
-    f_path = os.path.join(output_dir, f"{name}.csv")
-    if not os.path.exists(f_path):
-        f = open(f_path, 'w')
-        f.write(",".join(['date'] + [field.replace('securities_0_', '') for field in plot_fields]) + "\n")
-    else:
-        f = open(f_path, 'a')
-    f.write(",".join([time_str] + [str(data[field]) for field in plot_fields]) + '\n')
-    f.close()
 
 
 def plot_csv(dir_path, name='special_fields'):
@@ -67,14 +52,35 @@ def get_raw_stock_data(stock_name):
     return company_dict
 
 
-def compare_data_dicts(last_data, current_data, ignore_fields):
-    """Return a dictionary with all changes between two dictionaries"""
-    stock_changes = {}
-    if last_data and current_data:
-        for k, v in last_data.items():
-            if k in current_data and current_data[k] != v and k not in ignore_fields:
-                stock_changes[k] = (v, current_data[k])
-    return stock_changes
+def get_stock_data(stock_name):
+    """Returns a current data dicctionary for each stock loaded from the website servers"""
+    try:
+        data = get_raw_stock_data(stock_name)
+        data = flatten_dict(data)
+        df = pd.DataFrame.from_dict([data])
+        df = df.applymap(str)
+        df.replace('', 'Not available', inplace=True)
+        return df
+    except Exception as e:
+        return None
+
+    # manager_names = ['Kevin Booker', 'Kevin durant', 'Micheal Jordan', 'Kobi Bryant', 'Chris Paul', 'R Donoven JR']
+    # import random
+    # if random.random() > 0.2:
+    #     data = {"securities_0_authorizedShares": random.choice([1, 2, 3, 4]),
+    #             "securities_0_outstandingShares": random.choice([15, 16, 18, 22]),
+    #             "securities_0_restrictedShares": random.choice([12, 13, 45, 667]),
+    #             "securities_0_unrestrictedShares": random.choice([555, 666, 777, 888]),
+    #             "lastSale": random.choice([0.5, 0.1, 0.7, 0.8]),
+    #             "change":random.choice([-0.001, -0.002, 0.005, -0.02]),
+    #             "percentChange":random.choice([0.4, 0.6, -0.2, 0.05]),
+    #             "tickName":random.choice(['Up', 'Down'])
+    #     }
+    #     data = pd.DataFrame.from_dict([data])
+    #
+    # else:
+    #     data = None
+    # return data
 
 
 def flatten_dict(d, parent_key='', sep='_'):
@@ -116,19 +122,6 @@ def get_time_str(for_filename=True):
     return time_str
 
 
-def update_changes_log(changes_log_path, stock_names, max_cols=50):
-    """Adds a column with all the sock given names. header is the date. Saves up to 'max_cols' columns"""
-    # write changes
-    new_col = pd.DataFrame(zip([f"{str(datetime.now()).split('.')[0]}"] + stock_names))
-    if not os.path.exists(changes_log_path):
-        new_col.to_csv(changes_log_path, header=False, index=False)
-    else:
-        df = pd.read_csv(changes_log_path, header=None)
-        if df.shape[1] > max_cols:
-            df = df.T[-max_cols:].T
-        pd.concat([new_col, df], axis=1).to_csv(changes_log_path, header=False, index=False)
-
-
 def dump_stocks_plot(output_dir, stock_name_list):
     # fields = ["lastSale", "change", "percentChange"]
     df = pd.read_csv(os.path.join(output_dir, "price_status.csv"))
@@ -167,3 +160,47 @@ def dump_stocks_plot(output_dir, stock_name_list):
     plt.savefig(plot_path)
     plt.clf()
     return plot_path
+
+
+def update_plot_fields(csv_path, data_dict, plot_fields):
+    if data_dict is None:
+        return
+    plot_fields_dict = dict()
+    for field in plot_fields:
+        plot_fields_dict[field] = data_dict[field].values[0] if field in data_dict else 'Not available'
+    new_row = pd.DataFrame.from_dict([plot_fields_dict])
+    new_row.insert(0, 'date', [get_time_str()])
+    new_row.to_csv(csv_path, index=False, header=not os.path.exists(csv_path), mode='a')
+    plot_csv_process(os.path.dirname(csv_path))
+
+
+def update_price_status(log_path, stock_name, stock_data):
+    """Updates/adds a row for a given stock in a global file of stocks"""
+    header = ["stock", "lastSale", "change", "percentChange"]
+    if stock_data is None:
+        return
+    new_row = [[stock_name] + stock_data[header[1:]].values[0].tolist()]
+    if not os.path.exists(log_path):
+        new_row = pd.DataFrame(new_row, columns=header)
+        new_row.to_csv(log_path, columns=header, index=False)
+    else:
+        df = pd.read_csv(log_path)
+        if any(df['stock'] == stock_name):
+            df.loc[df['stock'] == stock_name] = new_row
+        else:
+            new_row = pd.DataFrame(new_row, columns=header)
+            df = df.append(new_row, ignore_index=True)
+
+        df.to_csv(log_path, columns=header, index=False)
+
+
+def compare_rows(row1, row2):
+    if row1 is None or row2 is None:
+        return None
+    diff = row1 != row2
+    diff_where = np.where(diff)
+    index = diff.stack()[diff.stack()].index
+    if np.any(diff_where):
+        diff = pd.DataFrame({'from': row1.values[diff_where], 'to': row2.values[diff_where]}, index=index)
+        return diff
+    return None
