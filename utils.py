@@ -54,33 +54,33 @@ def get_raw_stock_data(stock_name):
 
 def get_stock_data(stock_name):
     """Returns a current data dicctionary for each stock loaded from the website servers"""
-    # try:
-    #     data = get_raw_stock_data(stock_name)
-    #     data = flatten_dict(data)
-    #     df = pd.DataFrame.from_dict([data])
-    #     df = df.applymap(str)
-    #     df.replace('', 'Not available', inplace=True)
-    #     return df
-    # except Exception as e:
-    #     return None
+    try:
+        data = get_raw_stock_data(stock_name)
+        data = flatten_dict(data)
+        df = pd.DataFrame.from_dict([data])
+        df = df.applymap(str)
+        df.replace('', 'Not available', inplace=True)
+        return df
+    except Exception as e:
+        return None
 
-    manager_names = ['Kevin Booker', 'Kevin durant', 'Micheal Jordan', 'Kobi Bryant', 'Chris Paul', 'R Donoven JR']
-    import random
-    if random.random() > 0.2:
-        data = {"securities_0_authorizedShares": random.choice([1, 2, 3, 4]),
-                "securities_0_outstandingShares": random.choice([15, 16, 18, 22]),
-                "securities_0_restrictedShares": random.choice([12, 13, 45, 667]),
-                "securities_0_unrestrictedShares": random.choice([555, 666, 777, 888]),
-                "lastSale": random.choice([0.5, 0.1, 0.7, 0.8]),
-                "change":random.choice([-0.001, -0.002, 0.005, -0.02]),
-                "percentChange":random.choice([0.4, 0.6, -0.2, 0.05]),
-                "tickName":random.choice(['Up', 'Down'])
-        }
-        data = pd.DataFrame.from_dict([data])
-
-    else:
-        data = None
-    return data
+    # manager_names = ['Kevin Booker', 'Kevin durant', 'Micheal Jordan', 'Kobi Bryant', 'Chris Paul', 'R Donoven JR']
+    # import random
+    # if random.random() > 0.2:
+    #     data = {"securities_0_authorizedShares": random.choice([1, 2, 3, 4]),
+    #             "securities_0_outstandingShares": random.choice([15, 16, 18, 22]),
+    #             "securities_0_restrictedShares": random.choice([12, 13, 45, 667]),
+    #             "securities_0_unrestrictedShares": random.choice([555, 666, 777, 888]),
+    #             "lastSale": random.choice([0.5, 0.1, 0.7, 0.8]),
+    #             "change":random.choice([-0.001, -0.002, 0.005, -0.02]),
+    #             "percentChange":random.choice([0.4, 0.6, -0.2, 0.05]),
+    #             "tickName":random.choice(['Up', 'Down'])
+    #     }
+    #     data = pd.DataFrame.from_dict([data])
+    #
+    # else:
+    #     data = None
+    # return data
 
 
 def flatten_dict(d, parent_key='', sep='_'):
