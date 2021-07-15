@@ -20,9 +20,9 @@ def update_plot_fields(csv_path, data_dict, plot_fields):
         return
     plot_fields_dict = dict()
     for field in plot_fields:
-        plot_fields_dict[field] = data_dict[field] if field in data_dict else 'NA'
+        plot_fields_dict[field] = data_dict[field].values[0] if field in data_dict else 'Not available'
     new_row = pd.DataFrame.from_dict([plot_fields_dict])
-    new_row.insert(0,'date', [utils.get_time_str()])
+    new_row.insert(0, 'date', [utils.get_time_str()])
     new_row.to_csv(csv_path, index=False, header=not os.path.exists(csv_path), mode='a')
 
 
@@ -48,32 +48,34 @@ def update_prices_status(log_path, stock_name, stock_data):
 
 def collect_stock_data(stock_name):
     """Returns a current data dicctionary for each stock loaded from the website servers"""
-    # try:
-    #     data = utils.get_raw_stock_data(stock_name)
-    #     data = utils.flatten_dict(data)
-    #     return pd.DataFrame.from_dict([data])
-    # except Exception as e:
-    #     return None
+    try:
+        data = utils.get_raw_stock_data(stock_name)
+        data = utils.flatten_dict(data)
+        df = pd.DataFrame.from_dict([data])
+        df = df.applymap(str)
+        # df.replace('', 'N/A', inplace=True)
+        df.replace('', 'Not available', inplace=True)
+        return df
+    except Exception as e:
+        return None
 
     # manager_names = ['Kevin Booker', 'Kevin durant', 'Micheal Jordan', 'Kobi Bryant', 'Chris Paul', 'R Donoven JR']
-    import random
-    if random.random() > 0.2:
-        data = {"securities_0_authorizedShares": random.choice([1, 2, 3, 4]),
-                "securities_0_outstandingShares": random.choice([15, 16, 18, 22]),
-                "securities_0_restrictedShares": random.choice([12, 13, 45, 667]),
-                "securities_0_unrestrictedShares": random.choice([555, 666, 777, 888]),
-                "lastSale": random.choice([0.5, 0.1, 0.7, 0.8]),
-                "change":random.choice([-0.001, -0.002, 0.005, -0.02]),
-                "percentChange":random.choice([0.4, 0.6, -0.2, 0.05]),
-                "tickName":random.choice(['Up', 'Down'])
-        }
-        data = pd.DataFrame.from_dict([data])
-
-    else:
-        data = None
-
-
-    return data
+    # import random
+    # if random.random() > 0.2:
+    #     data = {"securities_0_authorizedShares": random.choice([1, 2, 3, 4]),
+    #             "securities_0_outstandingShares": random.choice([15, 16, 18, 22]),
+    #             "securities_0_restrictedShares": random.choice([12, 13, 45, 667]),
+    #             "securities_0_unrestrictedShares": random.choice([555, 666, 777, 888]),
+    #             "lastSale": random.choice([0.5, 0.1, 0.7, 0.8]),
+    #             "change":random.choice([-0.001, -0.002, 0.005, -0.02]),
+    #             "percentChange":random.choice([0.4, 0.6, -0.2, 0.05]),
+    #             "tickName":random.choice(['Up', 'Down'])
+    #     }
+    #     data = pd.DataFrame.from_dict([data])
+    #
+    # else:
+    #     data = None
+    # return data
 
 
 def compare_rows(row1, row2):
@@ -153,17 +155,18 @@ class StockMonitor:
 
     def get_stock_data(self, stock_name):
         last_data_csv_path = pjoin(self.output_dir, 'stocks', stock_name, 'stock_last_entry_data.csv')
-        return pd.read_csv(last_data_csv_path) if os.path.exists(last_data_csv_path) else None
+        return pd.read_csv(last_data_csv_path, dtype=str) if os.path.exists(last_data_csv_path) else None
 
     def _update_changes_log(self):
         print(f"Stock changed: {self.changes_list}")
-        csv_path = pjoin(self.output_dir, 'change-log.csv')
-        df = pd.read_csv(csv_path) if os.path.exists(csv_path) else pd.DataFrame()
-        new_col = pd.DataFrame({utils.get_time_str(): self.changes_list})
-        df = pd.concat([new_col, df], axis=1)
-        if df.shape[1] > 5:
-            df = df.iloc[:, :-1]
-        df.to_csv(csv_path, header=True, index=False)
+        if self.changes_list:
+            csv_path = pjoin(self.output_dir, 'change-log.csv')
+            df = pd.read_csv(csv_path) if os.path.exists(csv_path) else pd.DataFrame()
+            new_col = pd.DataFrame({utils.get_time_str(): self.changes_list})
+            df = pd.concat([new_col, df], axis=1)
+            if df.shape[1] > 5:
+                df = df.iloc[:, :-1]
+            df.to_csv(csv_path, header=True, index=False)
 
     def _init_folders(self, stock_name):
         os.makedirs(pjoin(self.output_dir, 'stocks', stock_name, 'change_logs'), exist_ok=True)
