@@ -1,5 +1,7 @@
 import argparse
 from time import sleep
+
+from gui_driver import manage_monitor
 from stock_monitor import StockMonitor
 
 
@@ -15,11 +17,12 @@ def main():
     args.screenshot_wait_time = 3
 
     monitor = StockMonitor(args)
-    while True:
-        print("Starting cycle")
-        monitor.run_cycle(1)
-        print("Cycle done sleepnig..")
-        sleep(4)
+    manage_monitor(monitor)
+    # while True:
+    #     print("Starting cycle")
+    #     monitor.run_cycle(1)
+    #     print("Cycle done sleepnig..")
+    #     sleep(4)
 
 if __name__ == '__main__':
     import multiprocessing

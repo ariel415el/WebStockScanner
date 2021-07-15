@@ -21,6 +21,8 @@ class StockMonitor:
         self.stock_names = [x.strip() for x in open(args.stock_names_path, 'r').readlines()]
         self.output_dir = args.output_dir
 
+        self.thread_pool = []
+
         self.screenshoter = ScreenShooter(10)
         self.screenshoter_lock = threading.Lock()
         self.max_status_images = 10
@@ -29,30 +31,52 @@ class StockMonitor:
         self.file_lock = threading.Lock()
         self.changes_list_lock = threading.Lock()
         self.queue = deque()
+        self.progress = 0
+        self.last_changes_list = []
         self.changes_list = []
+        self.collecting_data = False
 
-    def run_cycle(self, n_threads=1):
+    def init_threads(self, n_threads):
+        self.collecting_data = True
+
         assert not self.queue
         for stock_name in self.stock_names:
             self._init_folders(stock_name)
             self.queue.append(stock_name)
-        pool = []
+
         for x in range(n_threads):
             name = "Thread_" + str(x)
             t = threading.Thread(name=name, target=motitor_worker, args=(self,))
             t.start()
-            pool.append(t)
-        for t in pool:
+            self.thread_pool.append(t)
+
+    def is_all_tasks_done(self):
+        return self.progress == len(self.stock_names)
+
+    def join_threads(self):
+        for t in self.thread_pool:
             t.join()
+        self.thread_pool = []
+        self.collecting_data = False
+        self.progress = 0
+
+    def run_cycle(self, n_threads=1):
+        self.init_threads(n_threads)
+        self.join_threads()
 
         self._update_changes_log()
-        self.changes_list = []
+        self.changes_list = self.last_changes_list = []
 
     def pull_task(self):
         self.queue_lock.acquire()
         res = self.queue.pop() if self.queue else None
         self.queue_lock.release()
         return res
+
+    def report_task_done(self):
+        self.queue_lock.acquire()
+        self.progress += 1
+        self.queue_lock.release()
 
     def override_stock_data(self, stock_name, stock_data):
         if stock_data is not None:
@@ -61,6 +85,14 @@ class StockMonitor:
     def get_cached_stock_data(self, stock_name):
         last_data_csv_path = pjoin(self.output_dir, 'stocks', stock_name, 'stock_last_entry_data.csv')
         return pd.read_csv(last_data_csv_path, dtype=str) if os.path.exists(last_data_csv_path) else None
+
+    def query_changes(self):
+        # Todo is this slowing us down?
+        self.changes_list_lock.acquire()
+        new_changes = self.changes_list[len(self.last_changes_list):]
+        self.last_changes_list += new_changes
+        self.changes_list_lock.release()
+        return new_changes
 
     def report_stock_changed(self, stock_name, diff):
         self.changes_list_lock.acquire()
@@ -100,7 +132,6 @@ class StockMonitor:
         return ret_val
 
     def _update_changes_log(self):
-        print(f"Stock changed: {self.changes_list}")
         if self.changes_list:
             csv_path = pjoin(self.output_dir, 'change-log.csv')
             df = pd.read_csv(csv_path) if os.path.exists(csv_path) else pd.DataFrame()
@@ -134,9 +165,11 @@ def motitor_worker(monitor):
             monitor.report_stock_changed(stock_name, diff)
 
         if stock_changed or first_time:
-            utils.update_plot_fields(stock_name, new_data)
+            monitor.update_plot_fields(stock_name, new_data)
             monitor.screenshost_stock(stock_name)
 
-        utils.update_price_status(stock_name, new_data)
+        monitor.update_price_status(stock_name, new_data)
+
+        monitor.report_task_done()
 
     sys.exit()

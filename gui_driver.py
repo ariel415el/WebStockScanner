@@ -16,28 +16,13 @@ def t_print(x, end=None):
     print(f"{time_str}: {x}", end=end)
 
 
-def verify_initial_data(monitor, window):
-    for i, stock_name in enumerate(monitor.stock_names):
-        stock_dir_path = os.path.join(monitor.output_dir, "stocks", stock_name)
-        if not os.path.exists(stock_dir_path):
-            os.makedirs(stock_dir_path, exist_ok=True)
-            stock_data = monitor.collect_stock_data(stock_name)
-            monitor.screenshost_stock(stock_name)
-            monitor.update_prices_status(stock_name, stock_data)
-            monitor.write_plot_fields_data(stock_name, stock_data)
-            monitor.pickle_entire_stock_data(stock_name, stock_data)
-
-        window['PROGRESS_BAR'].update_bar(i)
-        window['PROGRESS_TXT'].update(stock_name)
-
-
 def drive_single_pass(monitor, window, alarm_on_change=True):
     # global thread_messages
     stocks_with_changes = []
     t_print("Collecting data")
     for i, stock_name in enumerate(monitor.stock_names):
-        stock_data = monitor.collect_stock_data(stock_name)
-        monitor.update_prices_status(stock_name, stock_data)
+        stock_data = utils.get_stock_data(stock_name)
+        utils.update_price_status(stock_name, stock_data)
         if monitor.last_data_entry[stock_name] is not None:
             stock_changes = utils.compare_data_dicts(monitor.last_data_entry[stock_name], stock_data, monitor.ignore_fields)
 
@@ -87,8 +72,9 @@ def get_run_layout(stock_names):
                         title_location=sg.TITLE_LOCATION_TOP),
                ],
               [debug_col_1, debug_col_2],
-              [sg.Text(f"Next run in N/A", key='time_to_next_run', size=(15, 1)),
-               sg.Drop([0, 1, 5, 10, 30, 60], key='wait_time', default_value=30)],
+              [sg.Text(f"Next run in N/A", key='time_to_next_run', size=(15, 1)), sg.Drop([0, 1, 5, 10, 30, 60], key='wait_time', default_value=30),
+              sg.Text(f"Data collecting threads:", size=(17, 1)), sg.Drop([1, 2, 5, 10], key='n_threads', default_value=5)],
+
               [sg.Text('Progress:'),
                sg.ProgressBar(len(stock_names), size=(20, 20), orientation='h', key='PROGRESS_BAR'),
                sg.Text('', key='PROGRESS_TXT', size=(15, 1))],
@@ -112,31 +98,13 @@ def manage_monitor(monitor):
     window = sg.Window('Multithreaded Window', layout, finalize=True)
     window.read(timeout=1)
 
-    # --------------------- INIT LOOP ---------------------
-    t_print(f"Initializing monitor: verigying images for {len(monitor.stock_names)} stocks...", end='')
-    thread = threading.Thread(target=verify_initial_data, args=(monitor, window), daemon=True)
-    thread.start()
-    while thread:
-        event, _ = window.read(timeout=100)
-        if event == 'Run':
-            print("Wait for initialization to finish")
-        if event in (sg.WIN_CLOSED, 'Exit'):
-            exit()
-        thread.join(timeout=1)
-        if not thread.is_alive():
-            window['PROGRESS_BAR'].update_bar(0)  # clear the progress bar
-            window['PROGRESS_TXT'].update('')  # clear the progress bar
-            thread = None
-    print("Done")
-    thread = None
-
     # --------------------- EVENT LOOP ---------------------
     while True:
         event, values = window.read(timeout=100)
         time_left = datetime.timedelta(seconds=int(values['wait_time'] * 60 - (time() - timer)))
         window['time_to_next_run'].update(f"Next run in {time_left}")
 
-        # Update status image by query
+        # --------------------- Handle gui requests ---------------------
 
         if event == 'show1':
             show_stock_images(values['list_box1'][0], monitor.output_dir)
@@ -156,22 +124,29 @@ def manage_monitor(monitor):
         # --------------------- Data collecting Thread ---------------------
         # Initiate data collecting thread
         if event == 'Run' or time() - timer > 60 * values['wait_time']:
-            if thread is not None:
-                t_print("Already running")
+            if not monitor.collecting_data:
+                t_print(f"Starting data collection {values['n_threads']} threads")
+                monitor.init_threads(values['n_threads'])
             else:
-                thread = threading.Thread(target=drive_single_pass, args=(monitor, window, values['alarm']), daemon=True)
-                thread.start()
+                t_print("Already running")
+        if monitor.collecting_data:
+            window['PROGRESS_BAR'].update_bar(monitor.progress)
+            new_changes = monitor.query_changes()
+            if new_changes:
+                new_changes = '\n'.join(new_changes)
+                window['status'].update(f"{new_changes}\n" + window['status'].get())
+                from playsound import playsound
+                playsound(os.path.join('icons', 'icq-uh-oh.mp3'))
 
-        # Terminate data collecting thread
-        if thread is not None:
-            thread.join(timeout=0)
-            if not thread.is_alive():  # the thread finished
-                t_print(thread_messages['msg'])
-                thread = None
+            # if not monitor.queue:
+            if monitor.is_all_tasks_done():
+                monitor.join_threads()
                 window['PROGRESS_BAR'].update_bar(0)  # clear the progress bar
-                window['PROGRESS_TXT'].update('')  # clear the progress bar
-                t_print("Data collecting thread terminated")
-            timer = time()
+                t_print(f"Data collecting thread terminated: {len(monitor.changes_list)} stocks changed")
+                window['status'].update(f"########################\n" + window['status'].get())
+                monitor._update_changes_log()
+                monitor.changes_list = []
+                timer = time()
 
     # if user exits the window, then close the window and exit the GUI func
     window.close()
