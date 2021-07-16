@@ -44,11 +44,22 @@ def get_dict_from_url(url):
 
 
 def get_raw_stock_data(stock_name):
-    url = f"https://backend.otcmarkets.com/otcapi/stock/trade/inside/{stock_name}?symbol={stock_name}"
-    prices_dict = get_dict_from_url(url)
     url = f"https://backend.otcmarkets.com/otcapi/company/profile/full/{stock_name}?symbol={stock_name}"
     company_dict = get_dict_from_url(url)
+
+    url = f"https://backend.otcmarkets.com/otcapi/stock/trade/inside/{stock_name}?symbol={stock_name}"
+    prices_dict = get_dict_from_url(url)
     company_dict.update({k:prices_dict[k] for k in ["lastSale", "change", "percentChange", "tickName"]})
+
+    url = f'https://backend.otcmarkets.com/otcapi/company/LCLP/dns/news?symbol{stock_name}&page=1&pageSize=1&sortOn=releaseDate&sortDir=DESC'
+    news_dict = get_dict_from_url(url)
+    if news_dict is not None and news_dict['records']:  #['totalRecords'] == 0:
+        company_dict['last_news_entry'] = news_dict['records'][0]['title']
+    else:
+        company_dict['last_news_entry'] = 'Not available'
+    company_dict.update({k:prices_dict[k] for k in ["lastSale", "change", "percentChange", "tickName"]})
+
+
     return company_dict
 
 

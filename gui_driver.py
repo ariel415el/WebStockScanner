@@ -134,6 +134,7 @@ def manage_monitor(monitor):
             window['PROGRESS_TXT'].update(f"{monitor.progress}/{len(monitor.stock_names)}  ({monitor.progress / (time() - timer):.1f} stocks/sec)")
             new_changes = monitor.query_changes()
             if new_changes:
+                monitor.add_screenshot_tasks(new_changes)
                 new_changes = '\n'.join(new_changes)
                 window['status'].update(f"{new_changes}\n" + window['status'].get())
                 if values['alarm']:
