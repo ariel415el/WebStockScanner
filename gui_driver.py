@@ -79,7 +79,7 @@ def get_run_layout(stock_names):
               [sg.Text('Progress:'),
                sg.ProgressBar(len(stock_names), size=(20, 20), orientation='h', key='PROGRESS_BAR'),
                sg.Text('', key='PROGRESS_TXT', size=(15, 1))],
-              [sg.Checkbox('Sound-Alarm', True, key='alarm'), sg.Checkbox("Screenshots:", key='do_screenshots', default=True)],
+              [sg.Checkbox('Sound-Alarm', True, key='alarm')],
               [sg.Button('Run'), sg.Button('Exit')]
               ]
 
@@ -126,7 +126,7 @@ def manage_monitor(monitor):
         if event == 'Run' or time() - timer > 60 * values['wait_time']:
             if not monitor.collecting_data:
                 t_print(f"Starting data collection {values['n_threads']} threads")
-                monitor.init_dc_threads(values['n_threads'], screenshot_sites=values['do_screenshots'])
+                monitor.init_dc_threads(values['n_threads'])
             else:
                 t_print("Already running")
         if monitor.collecting_data:
