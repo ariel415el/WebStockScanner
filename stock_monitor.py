@@ -3,6 +3,7 @@ import sys
 import threading
 from collections import deque
 from pathlib import Path
+from time import sleep
 
 import pandas as pd
 
@@ -21,22 +22,23 @@ class StockMonitor:
         self.stock_names = [x.strip() for x in open(args.stock_names_path, 'r').readlines()]
         self.output_dir = args.output_dir
 
-        self.thread_pool = []
-
-        self.screenshoter = ScreenShooter(10)
-        self.screenshoter_lock = threading.Lock()
-        self.max_status_images = 10
-
+        self.data_threads_pool = []
         self.queue_lock = threading.Lock()
+        self.queue = deque()
         self.file_lock = threading.Lock()
         self.changes_list_lock = threading.Lock()
-        self.queue = deque()
+        self.changes_list = []
         self.progress = 0
         self.last_changes_list = []
-        self.changes_list = []
         self.collecting_data = False
 
-    def init_threads(self, n_threads):
+        self.screenshoter = ScreenShooter(10)
+        self.screen_shoting_queue = deque()
+        self.screenshoter_lock = threading.Lock()
+        self.max_status_images = 20
+        self.init_screenshoting_thread()
+
+    def init_dc_threads(self, n_threads):
         self.collecting_data = True
 
         assert not self.queue
@@ -45,35 +47,35 @@ class StockMonitor:
             self.queue.append(stock_name)
 
         for x in range(n_threads):
-            name = "Thread_" + str(x)
-            t = threading.Thread(name=name, target=motitor_worker, args=(self,))
+            name = "Data_Thread_" + str(x)
+            t = threading.Thread(name=name, target=data_collection_worker, args=(self,))
             t.start()
-            self.thread_pool.append(t)
+            self.data_threads_pool.append(t)
 
     def is_all_tasks_done(self):
         return self.progress == len(self.stock_names)
 
-    def join_threads(self):
-        for t in self.thread_pool:
+    def join_dc_threads(self):
+        for t in self.data_threads_pool:
             t.join()
-        self.thread_pool = []
+        self.data_threads_pool = []
         self.collecting_data = False
         self.progress = 0
 
     def run_cycle(self, n_threads=1):
-        self.init_threads(n_threads)
-        self.join_threads()
+        self.init_dc_threads(n_threads)
+        self.join_dc_threads()
 
         self._update_changes_log()
         self.changes_list = self.last_changes_list = []
 
-    def pull_task(self):
+    def pull_dc_task(self):
         self.queue_lock.acquire()
         res = self.queue.pop() if self.queue else None
         self.queue_lock.release()
         return res
 
-    def report_task_done(self):
+    def report_dc_task_done(self):
         self.queue_lock.acquire()
         self.progress += 1
         self.queue_lock.release()
@@ -110,6 +112,20 @@ class StockMonitor:
         update_price_status(pjoin(self.output_dir, "price_status.csv"), stock_name, stock_data)
         self.file_lock.release()
 
+    def _init_folders(self, stock_name):
+        os.makedirs(pjoin(self.output_dir, 'stocks', stock_name, 'change_logs'), exist_ok=True)
+        os.makedirs(pjoin(self.output_dir, 'stocks', stock_name, 'status_images'), exist_ok=True)
+
+    def _update_changes_log(self):
+        if self.changes_list:
+            csv_path = pjoin(self.output_dir, 'change-log.csv')
+            df = pd.read_csv(csv_path) if os.path.exists(csv_path) else pd.DataFrame()
+            new_col = pd.DataFrame({utils.get_time_str(): self.changes_list})
+            df = pd.concat([new_col, df], axis=1)
+            if df.shape[1] > 5:
+                df = df.iloc[:, :-1]
+            df.to_csv(csv_path, header=True, index=False)
+
     def screenshost_stock(self, stock_name):
         """Take a screen shot from the three tabs of this stock page"""
         self.screenshoter_lock.acquire()
@@ -131,24 +147,19 @@ class StockMonitor:
 
         return ret_val
 
-    def _update_changes_log(self):
-        if self.changes_list:
-            csv_path = pjoin(self.output_dir, 'change-log.csv')
-            df = pd.read_csv(csv_path) if os.path.exists(csv_path) else pd.DataFrame()
-            new_col = pd.DataFrame({utils.get_time_str(): self.changes_list})
-            df = pd.concat([new_col, df], axis=1)
-            if df.shape[1] > 5:
-                df = df.iloc[:, :-1]
-            df.to_csv(csv_path, header=True, index=False)
+    def init_screenshoting_thread(self):
+        self.screenshit_thread = threading.Thread(name="ScreenShot thread", target=screenshot_worker, args=(self,))
+        self.screenshit_thread.start()
 
-    def _init_folders(self, stock_name):
-        os.makedirs(pjoin(self.output_dir, 'stocks', stock_name, 'change_logs'), exist_ok=True)
-        os.makedirs(pjoin(self.output_dir, 'stocks', stock_name, 'status_images'), exist_ok=True)
+    def add_screenshot_tasks(self, stock_names):
+        self.screenshoter_lock.acquire()
+        self.screen_shoting_queue.extend(stock_names)
+        self.screenshoter_lock.release()
 
 
-def motitor_worker(monitor):
+def data_collection_worker(monitor, screenshot_sites=False):
     while True:
-        stock_name = monitor.pull_task()
+        stock_name = monitor.pull_dc_task()
         if not stock_name:
             break
 
@@ -166,10 +177,23 @@ def motitor_worker(monitor):
 
         if stock_changed or first_time:
             monitor.update_plot_fields(stock_name, new_data)
-            monitor.screenshost_stock(stock_name)
+            if screenshot_sites:
+                monitor.screenshost_stock(stock_name)
 
         monitor.update_price_status(stock_name, new_data)
 
-        monitor.report_task_done()
+        monitor.report_dc_task_done()
 
     sys.exit()
+
+
+def screenshot_worker(monitor):
+    while True:
+        monitor.screenshoter_lock.acquire()
+        stock_name = monitor.screen_shoting_queue.pop() if monitor.screen_shoting_queue else None
+        monitor.screenshoter_lock.release()
+
+        if stock_name:
+            monitor.screenshost_stock(stock_name)
+        else:
+            sleep(5)

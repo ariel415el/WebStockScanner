@@ -73,12 +73,13 @@ def get_run_layout(stock_names):
                ],
               [debug_col_1, debug_col_2],
               [sg.Text(f"Next run in N/A", key='time_to_next_run', size=(15, 1)), sg.Drop([0, 1, 5, 10, 30, 60], key='wait_time', default_value=30),
-              sg.Text(f"Data collecting threads:", size=(17, 1)), sg.Drop([1, 2, 5, 10], key='n_threads', default_value=5)],
+              sg.Text(f"Data collecting threads:", size=(17, 1)), sg.Drop([1, 2, 5, 10], key='n_threads', default_value=5),
+               ],
 
               [sg.Text('Progress:'),
                sg.ProgressBar(len(stock_names), size=(20, 20), orientation='h', key='PROGRESS_BAR'),
                sg.Text('', key='PROGRESS_TXT', size=(15, 1))],
-              [sg.Checkbox('Sound-Alarm', True, key='alarm')],
+              [sg.Checkbox('Sound-Alarm', True, key='alarm'), sg.Checkbox("Screenshots:", key='do_screenshots', default=True)],
               [sg.Button('Run'), sg.Button('Exit')]
               ]
 
@@ -87,7 +88,6 @@ def get_run_layout(stock_names):
 
 def manage_monitor(monitor):
     # global thread_messages
-    thread_messages = {'progress': 0, 'progress_txt': '', 'msg': ''}
     timer = time()
     sg.theme('Dark Gray 13')
 
@@ -121,12 +121,12 @@ def manage_monitor(monitor):
         if event in (sg.WIN_CLOSED, 'Exit'):
             break
 
-        # --------------------- Data collecting Thread ---------------------
+        # --------------------- Data collecting Threads ---------------------
         # Initiate data collecting thread
         if event == 'Run' or time() - timer > 60 * values['wait_time']:
             if not monitor.collecting_data:
                 t_print(f"Starting data collection {values['n_threads']} threads")
-                monitor.init_threads(values['n_threads'])
+                monitor.init_dc_threads(values['n_threads'], screenshot_sites=values['do_screenshots'])
             else:
                 t_print("Already running")
         if monitor.collecting_data:
@@ -135,14 +135,15 @@ def manage_monitor(monitor):
             if new_changes:
                 new_changes = '\n'.join(new_changes)
                 window['status'].update(f"{new_changes}\n" + window['status'].get())
-                from playsound import playsound
-                playsound(os.path.join('icons', 'icq-uh-oh.mp3'))
+                if values['alarm']:
+                    from playsound import playsound
+                    playsound(os.path.join('icons', 'icq-uh-oh.mp3'))
 
             # if not monitor.queue:
             if monitor.is_all_tasks_done():
-                monitor.join_threads()
+                monitor.join_dc_threads()
                 window['PROGRESS_BAR'].update_bar(0)  # clear the progress bar
-                t_print(f"Data collecting thread terminated: {len(monitor.changes_list)} stocks changed")
+                t_print(f"Data collection Done: {len(monitor.changes_list)} stocks changed ({len(monitor.stock_names) / (time() - timer):.2f} stocks/sec)")
                 window['status'].update(f"########################\n" + window['status'].get())
                 monitor._update_changes_log()
                 monitor.changes_list = []
