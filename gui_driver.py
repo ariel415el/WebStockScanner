@@ -78,7 +78,7 @@ def get_run_layout(stock_names):
 
               [sg.Text('Progress:'),
                sg.ProgressBar(len(stock_names), size=(20, 20), orientation='h', key='PROGRESS_BAR'),
-               sg.Text('', key='PROGRESS_TXT', size=(18, 1))],
+               sg.Text('', key='PROGRESS_TXT', size=(20, 1))],
               [sg.Checkbox('Sound-Alarm', True, key='alarm')],
               [sg.Button('Run'), sg.Button('Exit')]
               ]
@@ -95,7 +95,7 @@ def manage_monitor(monitor):
     # --------------------- Run ---------------------
     layout = get_run_layout(monitor.stock_names)
 
-    window = sg.Window('Multithreaded Window', layout, finalize=True)
+    window = sg.Window('StockMonitor', layout, finalize=True)
     window.read(timeout=1)
 
     # --------------------- EVENT LOOP ---------------------
@@ -144,6 +144,7 @@ def manage_monitor(monitor):
             if monitor.is_all_tasks_done():
                 monitor.join_dc_threads()
                 window['PROGRESS_BAR'].update_bar(0)  # clear the progress bar
+                window['PROGRESS_TXT'].update('')
                 t_print(f"Data collection Done: {len(monitor.changes_list)} stocks changed ({len(monitor.stock_names) / (time() - timer):.1f} stocks/sec)")
                 window['status'].update(f"########################\n" + window['status'].get())
                 monitor._update_changes_log()
@@ -159,11 +160,12 @@ def show_price_changes(stock_name_list, output_dir):
     default_img_path = os.path.join('icons', 'no-img.png')
 
     layout = [[sg.Image(key='plot', filename=default_img_path)], [sg.Button('Exit')]]
-    window = sg.Window("Second Window", layout, modal=True, finalize=True)
+    window = sg.Window("StockMonitor", layout, modal=True, finalize=True)
 
     plot_path = dump_stocks_plot(output_dir, stock_name_list)
-    img_data = get_img_data(plot_path, first=True, maxsize=(1000,1000))
-    window.Element(f"plot").Update(data=img_data)
+    if os.path.exists(plot_path):
+        img_data = get_img_data(plot_path, first=True, maxsize=(1000,1000))
+        window.Element(f"plot").Update(data=img_data)
     while True:
         event, values = window.read()
         if event == "Exit" or event == sg.WIN_CLOSED:
@@ -184,7 +186,7 @@ def show_stock_images(stock_name, output_dir):
         [[sg.Frame("Stock graph:", [[sg.Image(key='status_image_0', filename=default_img_path)]], key='Frame_0')]])
 
     layout = [[img_col1, img_col2], [sg.Button('Exit')]]
-    window = sg.Window("Second Window", layout, modal=True, finalize=True)
+    window = sg.Window("StockMonitor", layout, modal=True, finalize=True)
 
     try_load_stock_images(output_dir, window, stock_name)
 

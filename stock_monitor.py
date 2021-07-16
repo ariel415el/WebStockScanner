@@ -132,7 +132,7 @@ class StockMonitor:
 
         ret_val = 0
 
-        for tab_name in ['profile', 'overview', 'security']:
+        for tab_name in ['profile', 'overview', 'security', 'news', 'disclosure']:
             dirpath = pjoin(self.output_dir, "stocks", stock_name, "status_images", tab_name)
             os.makedirs(dirpath, exist_ok=True)
             time_str = utils.get_time_str(for_filename=True)
@@ -156,6 +156,18 @@ class StockMonitor:
         self.screen_shoting_queue.extend(stock_names)
         self.screenshoter_lock.release()
 
+    def terminate(self):
+        self.screenshoter.terminate()
+
+        self.queue_lock.acquire()
+        self.queue = deque()
+        self.queue_lock.release()
+        self.join_dc_threads()
+
+        self.screenshoter_lock.acquire()
+        self.screen_shoting_queue = deque()
+        self.screenshoter_lock.release()
+        self.screenshit_thread.join()
 
 def data_collection_worker(monitor, screenshot_sites=False):
     while True:

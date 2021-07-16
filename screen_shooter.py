@@ -20,3 +20,6 @@ class ScreenShooter:
         self.driver.find_element_by_tag_name('body').screenshot(save_path)
 
         return 0
+
+    def terminate(self):
+        self.driver.close()
