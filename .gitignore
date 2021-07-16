@@ -1,5 +1,4 @@
 chromedriver.exe
-*.csv
 *pycache*
 .idea
 /build

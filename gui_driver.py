@@ -78,7 +78,7 @@ def get_run_layout(stock_names):
 
               [sg.Text('Progress:'),
                sg.ProgressBar(len(stock_names), size=(20, 20), orientation='h', key='PROGRESS_BAR'),
-               sg.Text('', key='PROGRESS_TXT', size=(15, 1))],
+               sg.Text('', key='PROGRESS_TXT', size=(18, 1))],
               [sg.Checkbox('Sound-Alarm', True, key='alarm')],
               [sg.Button('Run'), sg.Button('Exit')]
               ]
@@ -131,6 +131,7 @@ def manage_monitor(monitor):
                 t_print("Already running")
         if monitor.collecting_data:
             window['PROGRESS_BAR'].update_bar(monitor.progress)
+            window['PROGRESS_TXT'].update(f"{monitor.progress}/{len(monitor.stock_names)}  ({monitor.progress / (time() - timer):.1f} stocks/sec)")
             new_changes = monitor.query_changes()
             if new_changes:
                 new_changes = '\n'.join(new_changes)
@@ -143,7 +144,7 @@ def manage_monitor(monitor):
             if monitor.is_all_tasks_done():
                 monitor.join_dc_threads()
                 window['PROGRESS_BAR'].update_bar(0)  # clear the progress bar
-                t_print(f"Data collection Done: {len(monitor.changes_list)} stocks changed ({len(monitor.stock_names) / (time() - timer):.2f} stocks/sec)")
+                t_print(f"Data collection Done: {len(monitor.changes_list)} stocks changed ({len(monitor.stock_names) / (time() - timer):.1f} stocks/sec)")
                 window['status'].update(f"########################\n" + window['status'].get())
                 monitor._update_changes_log()
                 monitor.changes_list = []
