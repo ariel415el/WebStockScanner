@@ -1,5 +1,6 @@
 import json
 import os
+import threading
 import urllib.request
 from datetime import datetime
 
@@ -7,6 +8,8 @@ from multiprocessing import Process
 
 import numpy as np
 import pandas as pd
+
+NOT_AVAILABLE_STR = 'Not available'
 
 
 def plot_csv(dir_path, name='special_fields'):
@@ -37,43 +40,53 @@ def plot_csv_process(dir_path):
 
 
 def get_dict_from_url(url):
-    req = urllib.request.Request(url)
-    page = urllib.request.urlopen(req)
-    d = json.loads(page.read().decode('utf-8'))
+    try:
+        req = urllib.request.Request(url)
+        page = urllib.request.urlopen(req)
+        d = json.loads(page.read().decode('utf-8'))
+    except Exception as e:
+        # print(f"{threading.currentThread().getName()}: Failed to decode data from {url}.. ")
+        return dict()
     return d
 
 
 def get_raw_stock_data(stock_name):
     url = f"https://backend.otcmarkets.com/otcapi/company/profile/full/{stock_name}?symbol={stock_name}"
     company_dict = get_dict_from_url(url)
+    if not company_dict:
+        return dict()
 
     url = f"https://backend.otcmarkets.com/otcapi/stock/trade/inside/{stock_name}?symbol={stock_name}"
     prices_dict = get_dict_from_url(url)
-    company_dict.update({k:prices_dict[k] for k in ["lastSale", "change", "percentChange", "tickName"]})
+    if prices_dict:
+        company_dict.update({k:prices_dict[k] for k in ["lastSale", "change", "percentChange", "tickName"]})
+    else:
+        company_dict.update({k:NOT_AVAILABLE_STR for k in ["lastSale", "change", "percentChange", "tickName"]})
 
-    url = f'https://backend.otcmarkets.com/otcapi/company/LCLP/dns/news?symbol{stock_name}&page=1&pageSize=1&sortOn=releaseDate&sortDir=DESC'
+
+    url = f'https://backend.otcmarkets.com/otcapi/company/{stock_name}/dns/news?symbol{stock_name}&page=1&pageSize=1&sortOn=releaseDate&sortDir=DESC'
     news_dict = get_dict_from_url(url)
-    if news_dict is not None and news_dict['records']:  #['totalRecords'] == 0:
+    if not news_dict:
+        url = url.replace('dns','external')
+        news_dict = get_dict_from_url(url)
+    if 'records' in news_dict:
         company_dict['last_news_entry'] = news_dict['records'][0]['title']
     else:
-        company_dict['last_news_entry'] = 'Not available'
-    company_dict.update({k:prices_dict[k] for k in ["lastSale", "change", "percentChange", "tickName"]})
-
+        company_dict['last_news_entry'] = NOT_AVAILABLE_STR
 
     return company_dict
 
 
 def get_stock_data(stock_name):
     """Returns a current data dicctionary for each stock loaded from the website servers"""
-    try:
-        data = get_raw_stock_data(stock_name)
-        data = flatten_dict(data)
-        df = pd.DataFrame.from_dict([data])
-        df = df.applymap(str)
-        df.replace('', 'Not available', inplace=True)
-        return df
-    except Exception as e:
+    data = get_raw_stock_data(stock_name)
+    if not data:
         return None
+    data = flatten_dict(data)
+    df = pd.DataFrame.from_dict([data])
+    df = df.applymap(str)
+    df.replace('', NOT_AVAILABLE_STR, inplace=True)
+    return df
 
     # manager_names = ['Kevin Booker', 'Kevin durant', 'Micheal Jordan', 'Kobi Bryant', 'Chris Paul', 'R Donoven JR']
     # import random
@@ -139,10 +152,6 @@ def dump_stocks_plot(output_dir, stock_name_list):
     df = df.loc[df['stock'].isin(stock_name_list)]
     from matplotlib import pyplot as plt
 
-    # ax = df.plot.bar(x='stock', y="percentChange", rot=45, color=(df["percentChange"] > 0).map({True: 'g', False: 'r'}))
-    # ax.axhline(y=0, color='k', linestyle='--')
-    # ax.set_ylabel("Percentage cahge")
-
     plt.figure(figsize=(min(len(stock_name_list),20), 5))
 
     pos_ind, neg_ind = df["percentChange"] > 0, df["percentChange"] <= 0
@@ -178,7 +187,7 @@ def update_plot_fields(csv_path, data_dict, plot_fields):
         return
     plot_fields_dict = dict()
     for field in plot_fields:
-        plot_fields_dict[field] = data_dict[field].values[0] if field in data_dict else 'Not available'
+        plot_fields_dict[field] = data_dict[field].values[0] if field in data_dict else NOT_AVAILABLE_STR
     new_row = pd.DataFrame.from_dict([plot_fields_dict])
     new_row.insert(0, 'date', [get_time_str()])
     new_row.to_csv(csv_path, index=False, header=not os.path.exists(csv_path), mode='a')
@@ -205,10 +214,12 @@ def update_price_status(log_path, stock_name, stock_data):
         df.to_csv(log_path, columns=header, index=False)
 
 
-def compare_rows(row1, row2):
+def compare_rows(row1, row2, ignore_row_names):
     if row1 is None or row2 is None:
         return None
     diff = row1 != row2
+    diff = diff.drop([x for x in ignore_row_names if x in diff], axis=1)
+    diff = diff.drop(columns=diff.columns[(diff == NOT_AVAILABLE_STR).any()])
     diff_where = np.where(diff)
     index = diff.stack()[diff.stack()].index
     if np.any(diff_where):

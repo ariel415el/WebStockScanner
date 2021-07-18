@@ -11,7 +11,7 @@ from screen_shooter import ScreenShooter
 import utils
 from os.path import join as pjoin
 
-from utils import update_plot_fields, update_price_status, get_stock_data, compare_rows
+import utils
 
 
 class StockMonitor:
@@ -28,9 +28,12 @@ class StockMonitor:
         self.file_lock = threading.Lock()
         self.changes_list_lock = threading.Lock()
         self.changes_list = []
-        self.progress = 0
         self.last_changes_list = []
         self.collecting_data = False
+
+        self.status_lock = threading.Lock()
+        self.progress = 0
+        self.num_bad_data_reads = 0
 
         self.screenshoter = ScreenShooter(10)
         self.screen_shoting_queue = deque()
@@ -58,9 +61,13 @@ class StockMonitor:
     def join_dc_threads(self):
         for t in self.data_threads_pool:
             t.join()
+
+    def reinit_state(self):
         self.data_threads_pool = []
+        self.changes_list = []
         self.collecting_data = False
         self.progress = 0
+        self.num_bad_data_reads = 0
 
     def run_cycle(self, n_threads=1):
         self.init_dc_threads(n_threads)
@@ -74,11 +81,6 @@ class StockMonitor:
         res = self.queue.pop() if self.queue else None
         self.queue_lock.release()
         return res
-
-    def report_dc_task_done(self):
-        self.queue_lock.acquire()
-        self.progress += 1
-        self.queue_lock.release()
 
     def override_stock_data(self, stock_name, stock_data):
         if stock_data is not None:
@@ -105,11 +107,11 @@ class StockMonitor:
         diff.to_csv(pjoin(self.output_dir, 'stocks', stock_name, 'change_logs', f'{utils.get_time_str(for_filename=True)}.csv'))
 
     def update_plot_fields(self, stock_name, stock_data):
-        update_plot_fields(pjoin(self.output_dir, 'stocks', stock_name, 'special_fields.csv'), stock_data, self.plot_fields)
+        utils.update_plot_fields(pjoin(self.output_dir, 'stocks', stock_name, 'special_fields.csv'), stock_data, self.plot_fields)
 
     def update_price_status(self, stock_name, stock_data):
         self.file_lock.acquire()
-        update_price_status(pjoin(self.output_dir, "price_status.csv"), stock_name, stock_data)
+        utils.update_price_status(pjoin(self.output_dir, "price_status.csv"), stock_name, stock_data)
         self.file_lock.release()
 
     def _init_folders(self, stock_name):
@@ -156,6 +158,22 @@ class StockMonitor:
         self.screen_shoting_queue.extend(stock_names)
         self.screenshoter_lock.release()
 
+    def report_bad_data_read(self):
+        self.status_lock.acquire()
+        self.num_bad_data_reads += 1
+        self.status_lock.release()
+
+    def report_dc_task_done(self):
+        self.status_lock.acquire()
+        self.progress += 1
+        self.status_lock.release()
+
+    def get_status(self):
+        self.status_lock.acquire()
+        progress, bad_reads = self.progress, self.num_bad_data_reads
+        self.status_lock.release()
+        return progress, bad_reads
+
     def terminate(self):
         self.screenshoter.terminate()
 
@@ -169,17 +187,22 @@ class StockMonitor:
         self.screenshoter_lock.release()
         self.screenshit_thread.join()
 
+
 def data_collection_worker(monitor, screenshot_sites=False):
     while True:
         stock_name = monitor.pull_dc_task()
         if not stock_name:
             break
 
+        new_data = utils.get_stock_data(stock_name)
+        if new_data is None:
+            monitor.report_bad_data_read()
+            monitor.report_dc_task_done()
+            continue
         cur_data = monitor.get_cached_stock_data(stock_name)
-        new_data = get_stock_data(stock_name)
         monitor.override_stock_data(stock_name, new_data)
 
-        diff = compare_rows(cur_data, new_data)
+        diff = utils.compare_rows(cur_data, new_data, monitor.ignore_fields)
 
         stock_changed = diff is not None
         first_time = cur_data is None

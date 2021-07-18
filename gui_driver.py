@@ -16,41 +16,6 @@ def t_print(x, end=None):
     print(f"{time_str}: {x}", end=end)
 
 
-def drive_single_pass(monitor, window, alarm_on_change=True):
-    # global thread_messages
-    stocks_with_changes = []
-    t_print("Collecting data")
-    for i, stock_name in enumerate(monitor.stock_names):
-        stock_data = utils.get_stock_data(stock_name)
-        utils.update_price_status(stock_name, stock_data)
-        if monitor.last_data_entry[stock_name] is not None:
-            stock_changes = utils.compare_data_dicts(monitor.last_data_entry[stock_name], stock_data, monitor.ignore_fields)
-
-            if stock_changes:
-                monitor.write_changes(stock_name, stock_changes)
-                monitor.screenshost_stock(stock_name)
-
-                special_fields_changes = [x for x in stock_changes if x in monitor.plot_fields]
-                if special_fields_changes:
-                    monitor.write_plot_fields_data(stock_name, stock_data)
-
-                window['status'].update(f"{str(datetime.datetime.now()).split('.')[0]}: {stock_name}\n" + window['status'].get())
-                if alarm_on_change:
-                    stocks_with_changes.append(stock_name)
-                    from playsound import playsound
-                    playsound(os.path.join('icons','icq-uh-oh.mp3'))
-
-        monitor.pickle_entire_stock_data(stock_name, stock_data)
-
-        window['PROGRESS_BAR'].update_bar(i)
-        window['PROGRESS_TXT'].update(stock_name)
-
-    utils.update_changes_log(os.path.join(monitor.output_dir, "changes_log.csv"), stocks_with_changes)
-    window['status'].update("########################\n" + window['status'].get())
-
-    t_print(f"Found changes in {len(stocks_with_changes)} stocks")
-
-
 def get_run_layout(stock_names):
     s = 10
     debug_col_1 = sg.Col([[sg.Input(key='input1', size=(10, 1)), sg.Button('Filter', key='filter1')],
@@ -73,7 +38,8 @@ def get_run_layout(stock_names):
                ],
               [debug_col_1, debug_col_2],
               [sg.Text(f"Next run in N/A", key='time_to_next_run', size=(15, 1)), sg.Drop([0, 1, 5, 10, 30, 60], key='wait_time', default_value=30),
-              sg.Text(f"Data collecting threads:", size=(17, 1)), sg.Drop([1, 2, 5, 10], key='n_threads', default_value=5),
+               sg.Text(f"Data collecting threads:", size=(17, 1)), sg.Drop([1, 2, 5, 10], key='n_threads', default_value=5),
+               # sg.Text(f"Bad reads: 0", key='bad_reads', size=(17, 1)),
                ],
 
               [sg.Text('Progress:'),
@@ -146,10 +112,13 @@ def manage_monitor(monitor):
                 monitor.join_dc_threads()
                 window['PROGRESS_BAR'].update_bar(0)  # clear the progress bar
                 window['PROGRESS_TXT'].update('')
-                t_print(f"Data collection Done: {len(monitor.changes_list)} stocks changed ({len(monitor.stock_names) / (time() - timer):.1f} stocks/sec)")
+                t_print(f"Data collection Done: \n"
+                        f"   - {monitor.num_bad_data_reads} stocks were not read\n"
+                        f"   - {len(monitor.changes_list)} stocks changed "
+                        f"   - Speed: ({len(monitor.stock_names) / (time() - timer):.1f} stocks/sec)")
                 window['status'].update(f"########################\n" + window['status'].get())
                 monitor._update_changes_log()
-                monitor.changes_list = []
+                monitor.reinit_state()
                 timer = time()
 
     # if user exits the window, then close the window and exit the GUI func
