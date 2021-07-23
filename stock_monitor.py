@@ -8,10 +8,84 @@ from time import sleep
 import pandas as pd
 
 from screen_shooter import ScreenShooter
-import utils
 from os.path import join as pjoin
-
+from datetime import datetime
 import utils
+import heapq
+
+
+class TaskQueue:
+    def __init__(self, starting_values):
+        self.lock = threading.Lock()
+        self.heap = starting_values
+        heapq.heapify(self.heap)
+
+    def push(self, value):
+        self.lock.acquire()
+        heapq.heappush(self.heap, value)
+        self.lock.release()
+
+    def pop(self):
+        self.lock.acquire()
+        if not self.heap:
+            return None
+        task = heapq.heappop(self.heap)
+        self.lock.release()
+        return task
+
+    def is_empty(self):
+        self.lock.acquire()
+        res = not bool(self.heap)
+        self.lock.release()
+        return res
+
+    def clear(self):
+        self.lock.acquire()
+        self.heap = []
+        self.lock.release()
+
+class Stockdata:
+    def __init__(self, stock_name, outputs_dir):
+        self.name = stock_name
+        self.outputs_dir = outputs_dir
+
+        self.data = None
+        self.data_last_modification_date = None
+        self.cache_path = pjoin(self.outputs_dir, 'stock_last_entry_data.csv')
+        if os.path.exists(self.cache_path):
+            self.data = pd.read_csv(self.cache_path, dtype=str)
+            self.data_last_modification_date = datetime.fromtimestamp(Path(self.cache_path).stat().st_mtime)
+
+        self.num_bad_data_reads = 0
+
+        self.logs_dir = pjoin(self.outputs_dir, 'change_logs')
+        self.screen_shots_dir = pjoin(self.outputs_dir, 'status_images')
+        os.makedirs(self.logs_dir, exist_ok=True)
+        os.makedirs(self.screen_shots_dir, exist_ok=True)
+        self.special_fields_file = pjoin(self.outputs_dir, 'special_fields.csv')
+
+    def set_data(self, data):
+        self.data_last_modification_date = datetime.now()
+        if data is not None:
+            self.data = data
+            self.data.to_csv(self.cache_path, index=False, header=True)
+
+    def write_changes(self, diff):
+        diff.to_csv(pjoin(self.logs_dir, f'{utils.get_time_str(for_filename=True)}.csv'))
+
+    def update_plot_fields(self, plot_fields):
+        utils.update_plot_fields(self.special_fields_file, self.data, plot_fields)
+
+    def report_bad_data_read(self):
+        self.data_last_modification_date = datetime.now()
+        self.num_bad_data_reads += 1
+
+    def __lt__(self, other):
+        if self.data_last_modification_date is None:
+            return True
+        elif other.data_last_modification_date is None:
+            return False
+        return self.data_last_modification_date < other.data_last_modification_date
 
 
 class StockMonitor:
@@ -22,14 +96,16 @@ class StockMonitor:
         self.stock_names = [x.strip() for x in open(args.stock_names_path, 'r').readlines()]
         self.output_dir = args.output_dir
 
+        self.collecting_data = False
+
         self.data_threads_pool = []
-        self.queue_lock = threading.Lock()
-        self.queue = deque()
-        self.file_lock = threading.Lock()
+        self.task_queue = TaskQueue([])
+
         self.changes_list_lock = threading.Lock()
         self.changes_list = []
         self.last_changes_list = []
-        self.collecting_data = False
+
+        self.file_lock = threading.Lock()
 
         self.status_lock = threading.Lock()
         self.progress = 0
@@ -44,10 +120,10 @@ class StockMonitor:
     def init_dc_threads(self, n_threads):
         self.collecting_data = True
 
-        assert not self.queue
+        assert self.task_queue.is_empty()
         for stock_name in self.stock_names:
-            self._init_folders(stock_name)
-            self.queue.append(stock_name)
+            task = Stockdata(stock_name, pjoin(self.output_dir, 'stocks', stock_name))
+            self.task_queue.push(task)
 
         for x in range(n_threads):
             name = "Data_Thread_" + str(x)
@@ -76,20 +152,6 @@ class StockMonitor:
         self._update_changes_log()
         self.changes_list = self.last_changes_list = []
 
-    def pull_dc_task(self):
-        self.queue_lock.acquire()
-        res = self.queue.pop() if self.queue else None
-        self.queue_lock.release()
-        return res
-
-    def override_stock_data(self, stock_name, stock_data):
-        if stock_data is not None:
-            stock_data.to_csv(pjoin(self.output_dir, 'stocks', stock_name, 'stock_last_entry_data.csv'), index=False, header=True)
-
-    def get_cached_stock_data(self, stock_name):
-        last_data_csv_path = pjoin(self.output_dir, 'stocks', stock_name, 'stock_last_entry_data.csv')
-        return pd.read_csv(last_data_csv_path, dtype=str) if os.path.exists(last_data_csv_path) else None
-
     def query_changes(self):
         # Todo is this slowing us down?
         self.changes_list_lock.acquire()
@@ -98,25 +160,15 @@ class StockMonitor:
         self.changes_list_lock.release()
         return new_changes
 
-    def report_stock_changed(self, stock_name, diff):
+    def report_stock_changed(self, stock_name):
         self.changes_list_lock.acquire()
         self.changes_list.append(stock_name)
         self.changes_list_lock.release()
-
-        os.makedirs(pjoin(self.output_dir, 'stocks', stock_name, 'change_logs'), exist_ok=True)
-        diff.to_csv(pjoin(self.output_dir, 'stocks', stock_name, 'change_logs', f'{utils.get_time_str(for_filename=True)}.csv'))
-
-    def update_plot_fields(self, stock_name, stock_data):
-        utils.update_plot_fields(pjoin(self.output_dir, 'stocks', stock_name, 'special_fields.csv'), stock_data, self.plot_fields)
 
     def update_price_status(self, stock_name, stock_data):
         self.file_lock.acquire()
         utils.update_price_status(pjoin(self.output_dir, "price_status.csv"), stock_name, stock_data)
         self.file_lock.release()
-
-    def _init_folders(self, stock_name):
-        os.makedirs(pjoin(self.output_dir, 'stocks', stock_name, 'change_logs'), exist_ok=True)
-        os.makedirs(pjoin(self.output_dir, 'stocks', stock_name, 'status_images'), exist_ok=True)
 
     def _update_changes_log(self):
         if self.changes_list:
@@ -161,6 +213,7 @@ class StockMonitor:
     def report_bad_data_read(self):
         self.status_lock.acquire()
         self.num_bad_data_reads += 1
+        self.progress += 1
         self.status_lock.release()
 
     def report_dc_task_done(self):
@@ -177,9 +230,7 @@ class StockMonitor:
     def terminate(self):
         self.screenshoter.terminate()
 
-        self.queue_lock.acquire()
-        self.queue = deque()
-        self.queue_lock.release()
+        self.task_queue.clear()
         self.join_dc_threads()
 
         self.screenshoter_lock.acquire()
@@ -189,33 +240,39 @@ class StockMonitor:
 
 
 def data_collection_worker(monitor, screenshot_sites=False):
-    while True:
-        stock_name = monitor.pull_dc_task()
-        if not stock_name:
-            break
+    while not monitor.task_queue.is_empty():
+        task = monitor.task_queue.pop()
 
-        new_data = utils.get_stock_data(stock_name)
+        cur_data = task.data
+        new_data = utils.get_stock_data(task.name)
         if new_data is None:
-            monitor.report_bad_data_read()
-            monitor.report_dc_task_done()
+            task.report_bad_data_read()
+            if task.num_bad_data_reads > 3:
+                print(f"{threading.currentThread().getName()}: Skipping {task.name}. It couldn't be read for {task.num_bad_data_reads} times")
+                monitor.report_bad_data_read()
+            else:
+                print(f"{threading.currentThread().getName()}: {task.name}  couldn't be read for {task.num_bad_data_reads} times,"
+                      f" sleeping for {5} seconds")
+                sleep(5)
+                monitor.task_queue.push(task)
             continue
-        cur_data = monitor.get_cached_stock_data(stock_name)
-        monitor.override_stock_data(stock_name, new_data)
 
+        task.set_data(new_data)
         diff = utils.compare_rows(cur_data, new_data, monitor.ignore_fields)
 
         stock_changed = diff is not None
         first_time = cur_data is None
 
         if stock_changed:
-            monitor.report_stock_changed(stock_name, diff)
+            task.write_changes(diff)
+            monitor.report_stock_changed(task.name)
 
         if stock_changed or first_time:
-            monitor.update_plot_fields(stock_name, new_data)
+            task.update_plot_fields(monitor.plot_fields)
             if screenshot_sites:
-                monitor.screenshost_stock(stock_name)
+                monitor.screenshost_stock(task.name)
 
-        monitor.update_price_status(stock_name, new_data)
+        monitor.update_price_status(task.name, new_data)
 
         monitor.report_dc_task_done()
 

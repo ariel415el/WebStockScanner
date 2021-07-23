@@ -38,7 +38,7 @@ def get_run_layout(stock_names):
                ],
               [debug_col_1, debug_col_2],
               [sg.Text(f"Next run in N/A", key='time_to_next_run', size=(15, 1)), sg.Drop([0, 1, 5, 10, 30, 60], key='wait_time', default_value=30),
-               sg.Text(f"Data collecting threads:", size=(17, 1)), sg.Drop([1, 2, 5, 10], key='n_threads', default_value=5),
+               sg.Text(f"Data collecting threads:", size=(17, 1)), sg.Drop([1, 2, 3, 4, 5], key='n_threads', default_value=2),
                # sg.Text(f"Bad reads: 0", key='bad_reads', size=(17, 1)),
                ],
 

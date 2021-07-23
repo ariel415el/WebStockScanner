@@ -64,10 +64,10 @@ def get_raw_stock_data(stock_name):
         company_dict.update({k:NOT_AVAILABLE_STR for k in ["lastSale", "change", "percentChange", "tickName"]})
 
 
-    url = f'https://backend.otcmarkets.com/otcapi/company/{stock_name}/dns/news?symbol{stock_name}&page=1&pageSize=1&sortOn=releaseDate&sortDir=DESC'
+    url = f'https://backend.otcmarkets.com/otcapi/company/{stock_name}/dns/news?symbol={stock_name}&page=1&pageSize=1&sortOn=releaseDate&sortDir=DESC'
     news_dict = get_dict_from_url(url)
     if not news_dict:
-        url = url.replace('dns','external')
+        url = url.replace('dns', 'external')
         news_dict = get_dict_from_url(url)
     if 'records' in news_dict:
         company_dict['last_news_entry'] = news_dict['records'][0]['title']
@@ -214,15 +214,29 @@ def update_price_status(log_path, stock_name, stock_data):
         df.to_csv(log_path, columns=header, index=False)
 
 
+def filter_rows(row1, row2, ignore_row_names):
+    ignore_columns = [x for x in ignore_row_names if x in row1]
+    not_available_columns = (row1 == NOT_AVAILABLE_STR).any() | (row2 == NOT_AVAILABLE_STR).any()
+    not_available_columns = row2.columns[not_available_columns].tolist()
+
+    filtered_row1 = row1.drop(ignore_columns + not_available_columns, axis=1)
+    filtered_row2 = row2.drop(ignore_columns + not_available_columns, axis=1)
+
+    return filtered_row1, filtered_row2
+
+
 def compare_rows(row1, row2, ignore_row_names):
     if row1 is None or row2 is None:
         return None
-    diff = row1 != row2
+
+    filtered_row1, filtered_row2 = filter_rows(row1, row2, ignore_row_names)
+
+    diff = filtered_row1 != filtered_row2
     diff = diff.drop([x for x in ignore_row_names if x in diff], axis=1)
     diff = diff.drop(columns=diff.columns[(diff == NOT_AVAILABLE_STR).any()])
     diff_where = np.where(diff)
     index = diff.stack()[diff.stack()].index
     if np.any(diff_where):
-        diff = pd.DataFrame({'from': row1.values[diff_where], 'to': row2.values[diff_where]}, index=index)
+        diff = pd.DataFrame({'from': filtered_row1.values[diff_where], 'to': filtered_row2.values[diff_where]}, index=index)
         return diff
     return None
